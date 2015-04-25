@@ -222,7 +222,7 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 	while(1)
 	{
 		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
-		UARTprintf("Temperatura %i \n",potenciometros[0] );
+		UARTprintf("Valores %i, %i, %i \n",potenciometros[0],potenciometros[1],potenciometros[2] );
 	}
 }
 
@@ -263,13 +263,13 @@ int main(void)
 	UARTprintf("\n\nBienvenido a la aplicacion Simulador Vuelo (curso 2014/15)!\n");
 	UARTprintf("\nAutores: Anabel Ramirez y Jose Antonio Yebenes ");
 
-	confTimer();
+
 
 	confTasks();
 	//
 	// Arranca el  scheduler.  Pasamos a ejecutar las tareas que se hayan activado.
 	//
-
+	confTimer();
 	vTaskStartScheduler();	//el RTOS habilita las interrupciones al entrar aqui, asi que no hace falta habilitarlas
 
 	//De la funcion vTaskStartScheduler no se sale nunca... a partir de aqui pasan a ejecutarse las tareas.
@@ -323,6 +323,8 @@ void confGPIO(){
 	//    ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
 	//    ROM_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);	//LEDS APAGADOS
 
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
+
 	//Inicializa los LEDs usando libreria RGB --> usa Timers 0 y 1 (eliminar si no se usa finalmente)
 	//RGBInit(1);
 	//SysCtlPeripheralSleepEnable(GREEN_TIMER_PERIPH);
@@ -357,21 +359,30 @@ void confTasks(){
 }
 
 void confADC(){
+
+	IntPrioritySet(INT_ADC0SS0,5);
+
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);   // Habilita ADC0
 	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_ADC0);
-	ADCSequenceDisable(ADC0_BASE, 1); // Deshabilita el secuenciador 1 del ADC0 para su configuracion
-	// Disparo de muestreo por instrucciones de Timer
-	HWREG(ADC0_BASE + ADC_O_PC) = (ADC_PC_SR_250K);	// usar en lugar de SysCtlADCSpeedSet
-	ADCSequenceConfigure(ADC0_BASE, 1, ADC_TRIGGER_TIMER, 0);
-	ADCHardwareOversampleConfigure(ADC0_BASE, 64);
+	ADCSequenceDisable(ADC0_BASE,0); // Deshabilita el secuenciador 1 del ADC0 para su configuracion
+
+
+	HWREG(ADC0_BASE + ADC_O_PC) = (ADC_PC_SR_500K);	// usar en lugar de SysCtlADCSpeedSet
+	ADCSequenceConfigure(ADC0_BASE, 0, ADC_TRIGGER_TIMER, 0);// Disparo de muestreo por instrucciones de Timer
+	ADCHardwareOversampleConfigure(ADC0_BASE, 64); //SobreMuestreo de 64 muestras
+
 	// Configuramos los 4 conversores del secuenciador 1 para muestreo del sensor de temperatura
-	ADCSequenceStepConfigure(ADC0_BASE, 1, 0, ADC_CTL_TS| ADC_CTL_IE | ADC_CTL_END);
+	ADCSequenceStepConfigure(ADC0_BASE, 0, 0, ADC_CTL_CH0); //Sequencer Step 0: Samples Channel PE3
+	ADCSequenceStepConfigure(ADC0_BASE, 0, 1, ADC_CTL_CH1); //Sequencer Step 1: Samples Channel PE2
+	ADCSequenceStepConfigure(ADC0_BASE, 0, 2, ADC_CTL_CH2 | ADC_CTL_IE | ADC_CTL_END); //Sequencer Step 2: Samples Channel PE1
+
 	// Tras configurar el secuenciador, se vuelve a habilitar
-	ADCSequenceEnable(ADC0_BASE, 1);
+	ADCSequenceEnable(ADC0_BASE, 0);
 	//Asociamos la función a la interrupción
-	ADCIntRegister(ADC0_BASE, 1,ADCIntHandler);
+	ADCIntRegister(ADC0_BASE, 0,ADCIntHandler);
 	//Activamos las interrupciones
-	ADCIntEnable(ADC0_BASE, 1);
+	ADCIntEnable(ADC0_BASE,0);
+
 
 }
 
@@ -382,8 +393,7 @@ void confTimer(){
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
 	// Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
 	TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
-
-	uint32_t ui32Period = SysCtlClockGet() *0.1;
+	uint32_t ui32Period = SysCtlClockGet() *2;
 	// Carga la cuenta en el Timer0A
 	TimerLoadSet(TIMER0_BASE, TIMER_A, ui32Period -1);
 	//Configuramos el Timer como el TRIGGER del ADC
@@ -399,23 +409,22 @@ void confQueue(){
 
 void ADCIntHandler(){
 
+	ADCIntClear(ADC0_BASE, 0); // Limpia el flag de interrupcion del ADC
 
-	uint32_t ui32ADC0Value;
-	uint32_t ui32TempValueC, ui32TempValueF;
+	uint32_t potenciometros[3];
 	BaseType_t xHigherPriorityTaskWoken;
 	xHigherPriorityTaskWoken = pdFALSE;
 
 
-	ADCIntClear(ADC0_BASE, 1); // Limpia el flag de interrupcion del ADC
 
 	// Tras haber finalizado la conversion, leemos los datos del secuenciador
-	  ADCSequenceDataGet(ADC0_BASE, 1, &ui32ADC0Value);
 
-	// Y lo convertimos a grados centigrados, usando la formula indicada en el Data Sheet
-	 ui32TempValueC = (1475 - ((2475 * ui32ADC0Value)) / 4096)/10;
-	 ui32TempValueF = ((ui32TempValueC * 9) + 160) / 5;
+	 ADCSequenceDataGet(ADC0_BASE, 0, potenciometros);
+
 	 //Enviamos el dato a la tarea
-	 uint32_t potenciometros[3];
-	 potenciometros[0]=ui32TempValueC;
 	 xQueueSendFromISR( potQueue,potenciometros,&xHigherPriorityTaskWoken);
+
+	 if(xHigherPriorityTaskWoken == pdTRUE){
+		 vPortYieldFromISR();
+	 }
 }
