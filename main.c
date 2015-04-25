@@ -264,6 +264,12 @@ static portTASK_FUNCTION(LEDTask,pvParameters)
 		}
 
 
+void confSys();
+void confUART();
+void confGPIO();
+void confTasks();
+
+
 //*****************************************************************************
 //
 // Funcion main(), Inicializa los perifericos, crea las tareas, etc... y arranca el bucle del sistema
@@ -272,6 +278,33 @@ static portTASK_FUNCTION(LEDTask,pvParameters)
 int main(void)
 {
 
+
+
+	confSys();
+	confUART();
+	confGPIO();
+
+	//
+	// Mensaje de bienvenida inicial.
+	//
+	UARTprintf("\n\nBienvenido a la aplicacion Simulador Vuelo (curso 2014/15)!\n");
+	UARTprintf("\nAutores: Anabel Ramirez y Jose Antonio Yebenes ");
+
+	confTasks();
+	//
+	// Arranca el  scheduler.  Pasamos a ejecutar las tareas que se hayan activado.
+	//
+
+	vTaskStartScheduler();	//el RTOS habilita las interrupciones al entrar aqui, asi que no hace falta habilitarlas
+
+	//De la funcion vTaskStartScheduler no se sale nunca... a partir de aqui pasan a ejecutarse las tareas.
+	while(1)
+	{
+		//Si llego aqui es que algo raro ha pasado
+	}
+}
+
+void confSys(){
 	//
 	// Set the clocking to run at 40 MHz from the PLL.
 	//
@@ -291,7 +324,8 @@ int main(void)
 	// Para eso utiliza un timer, que aqui hemos puesto que sea el TIMER3 (ultimo parametro que se pasa a la funcion)
 	// (y por tanto este no se deberia utilizar para otra cosa).
 	CPUUsageInit(g_ulSystemClock, configTICK_RATE_HZ/10, 3);
-
+}
+void confUART(){
 	//
 	// Inicializa la UARTy la configura a 115.200 bps, 8-N-1 .
 	//se usa para mandar y recibir mensajes y comandos por el puerto serie
@@ -307,6 +341,8 @@ int main(void)
 	ROM_SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_UART0);	//La UART tiene que seguir funcionando aunque el micro este dormido
 	ROM_SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_GPIOA);	//La UART tiene que seguir funcionando aunque el micro este dormido
 
+}
+void confGPIO(){
 	//Inicializa el puerto F (LEDs) --> No hace falta si usamos la libreria RGB
 	//    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 	//    ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
@@ -318,47 +354,34 @@ int main(void)
 	SysCtlPeripheralSleepEnable(BLUE_TIMER_PERIPH);
 	SysCtlPeripheralSleepEnable(RED_TIMER_PERIPH);	//Redundante porque BLUE_TIMER_PERIPH y GREEN_TIMER_PERIPH son el mismo
 
-	//
-	// Mensaje de bienvenida inicial.
-	//
-	UARTprintf("\n\nBienvenido a la aplicacion XXXXX (curso 2014/15)!\n");
-	UARTprintf("\nAutores: XXXXXX y XXXXX ");
-
+}
+void confTasks(){
 	/**                                              Creacion de tareas 												**/
 
-	// Crea la tarea que gestiona los comandos UART (definida en el fichero commands.c)
-	//
-	if((xTaskCreate(vUARTTask, (portCHAR *)"Uart", 512,NULL,tskIDLE_PRIORITY + 1, NULL) != pdTRUE))
-	{
-		while(1);
-	}
+		// Crea la tarea que gestiona los comandos UART (definida en el fichero commands.c)
+		//
+		if((xTaskCreate(vUARTTask, (portCHAR *)"Uart", 512,NULL,tskIDLE_PRIORITY + 1, NULL) != pdTRUE))
+		{
+			while(1);
+		}
 
-	UsbSerialInit(32,32);	//Inicializo el  sistema USB
-	//
-	// Crea la tarea que gestiona los comandos USB (definidos en CommandProcessingTask)
-	//
-	if(xTaskCreate(CommandProcessingTask, (portCHAR *)"usbser",512, NULL, tskIDLE_PRIORITY + 2, NULL) != pdTRUE)
-	{
-		while(1);
-	}
+		UsbSerialInit(32,32);	//Inicializo el  sistema USB
+		//
+		// Crea la tarea que gestiona los comandos USB (definidos en CommandProcessingTask)
+		//
+		if(xTaskCreate(CommandProcessingTask, (portCHAR *)"usbser",512, NULL, tskIDLE_PRIORITY + 2, NULL) != pdTRUE)
+		{
+			while(1);
+		}
 
-	//
-	// Ejemplo de creacion de una tarea que parpadea el LED ROJO -> quitar en la aplicacion final
-	//
-	if((xTaskCreate(LEDTask, (signed portCHAR *)"Led1", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + LED1TASKPRIO, NULL) != pdTRUE))
-	{
-		while(1);
-	}
+		//
+		// Ejemplo de creacion de una tarea que parpadea el LED ROJO -> quitar en la aplicacion final
+		//
+		if((xTaskCreate(LEDTask, (signed portCHAR *)"Led1", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + LED1TASKPRIO, NULL) != pdTRUE))
+		{
+			while(1);
+		}
 
-	//
-	// Arranca el  scheduler.  Pasamos a ejecutar las tareas que se hayan activado.
-	//
-	vTaskStartScheduler();	//el RTOS habilita las interrupciones al entrar aqui, asi que no hace falta habilitarlas
 
-	//De la funcion vTaskStartScheduler no se sale nunca... a partir de aqui pasan a ejecutarse las tareas.
-	while(1)
-	{
-		//Si llego aqui es que algo raro ha pasado
-	}
 }
 
