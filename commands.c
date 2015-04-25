@@ -186,7 +186,7 @@ tCmdLineEntry g_psCmdTable[] =
 #if (configGENERATE_RUN_TIME_STATS)
 	{ "stats",    Cmd_stats,      "     : Muestra estadisticas de las tareas" },
 #endif
-    { 0, 0, 0 }
+	    { 0, 0, 0 }
 };
 
 // ==============================================================================

@@ -1,30 +1,3 @@
-//*****************************************************************************
-//
-// Codigo de partida simulador de vuelo
-// Autores: Eva Gonzalez, Ignacio Herrero, Jose Manuel Cano
-// Este ejemplo implementa la base de un simulador de vuelo con las siguientes caracteristicas:
-//  1. la inclinaci贸n de la placa/avion en los diferentes ejes (yaw,pitch, roll) se simula mediante
-//  potenciometros externos cuya posici贸n es capturada a trav茅s de canales del ADC. La inclinaci贸n
-//  (simulada) influye en la altitud que toma el avion, con lo que al llegar a una altitud 0, se
-//  considera que el avion se ha estrellado y la aplicacion ha finalizado.
-//  2. El sistema incluye indicadores de velocidad del avion, asi como nivel de fuel. A mayor velocidad,
-//  mayor es el consumo de fuel (ver especificaciones).
-//  3. Cuando el avion queda sin fuel, la velocidad pasa a 0, los mandos del potenciometro dejan de
-//   responder, el angulo de inclinacion pitch se coloca poco a poco en -45潞, y la velocidad aumenta
-//  gradualmente con la gravedad, de manera que el avion acaba finalmente estrellandose.
-//  (ver documento de especificaciones para mas informacion)
-//  4. La pulsaci贸n de los botones de la placa permite la entrada/salida de un modo de piloto
-//     automatico, en el que el avion se estabiliza automaticamente independendientemente del estado
-//     de los potenciometro, y se fija una V de 100Km/h, quedando anulado el control de velocidad "normal"
-//  La aplicacion se basa en un intercambio de comandos con 贸rdenes e informaci贸n, a trav茅s  de la
-//  configuraci贸n de un perfil CDC de USB (emulacion de puerto serie) y un protocolo
-//  de comunicacion con el PC que permite recibir ciertas ordenes y enviar determinados datos en respuesta.
-//   El ejemplo basico de partida implementa un ejemplo de recepcion de un comando generico que permite el
-//   apagado y encendido de los LEDs de la placa. Cada grupo deber谩 implementar el env铆o y recepci贸n de comandos
-//   en funci贸n
-//
-//*****************************************************************************
-
 #include<stdbool.h>
 #include<stdint.h>
 
@@ -46,6 +19,7 @@
 #include "queue.h"
 #include "semphr.h"
 #include "utils/cpu_usage.h"
+#include "inc/hw_adc.h"
 
 #include "drivers/rgb.h"
 #include "usb_dev_serial.h"
@@ -59,6 +33,8 @@
 
 uint32_t g_ui32CPUUsage;
 uint32_t g_ulSystemClock;
+
+QueueHandle_t potQueue;
 
 extern void vUARTTask( void *pvParameters );
 
@@ -235,39 +211,36 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 	}
 }
 
-// Codigo de tarea de ejemplo: eliminar para la aplicacion final
-static portTASK_FUNCTION(LEDTask,pvParameters)
+static portTASK_FUNCTION(SensorTask,pvParameters)
 		{
 
-	int32_t estado_led=0;
+	uint32_t potenciometros[3];
 
 	//
 	// Bucle infinito, las tareas en FreeRTOS no pueden "acabar", deben "matarse" con la funcion xTaskDelete().
 	//
 	while(1)
 	{
-		estado_led=!estado_led;
-
-		if (estado_led)
-		{
-			GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1 , GPIO_PIN_1);
-			vTaskDelay(0.1*configTICK_RATE_HZ);        //Espera del RTOS (eficiente, no gasta CPU)
-			//Esta espera es de unos 100ms aproximadamente.
-		}
-		else
-		{
-			GPIOPinWrite(GPIO_PORTF_BASE,  GPIO_PIN_1,0);
-			vTaskDelay(2*configTICK_RATE_HZ);        //Espera del RTOS (eficiente, no gasta CPU)
-			//Esta espera es de unos 2s aproximadamente.
-		}
+		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
+		UARTprintf("Temperatura %i \n",potenciometros[0] );
 	}
-		}
+}
 
+
+// Rutinas de Interrupcion
+
+void ADCIntHandler();
+
+//Funciones de Configuracion
 
 void confSys();
 void confUART();
 void confGPIO();
 void confTasks();
+
+void confQueue();
+void confADC();
+void confTimer();
 
 
 //*****************************************************************************
@@ -278,17 +251,19 @@ void confTasks();
 int main(void)
 {
 
-
-
 	confSys();
 	confUART();
 	confGPIO();
+	confADC();
+	confQueue();
 
 	//
 	// Mensaje de bienvenida inicial.
 	//
 	UARTprintf("\n\nBienvenido a la aplicacion Simulador Vuelo (curso 2014/15)!\n");
 	UARTprintf("\nAutores: Anabel Ramirez y Jose Antonio Yebenes ");
+
+	confTimer();
 
 	confTasks();
 	//
@@ -349,39 +324,98 @@ void confGPIO(){
 	//    ROM_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);	//LEDS APAGADOS
 
 	//Inicializa los LEDs usando libreria RGB --> usa Timers 0 y 1 (eliminar si no se usa finalmente)
-	RGBInit(1);
-	SysCtlPeripheralSleepEnable(GREEN_TIMER_PERIPH);
-	SysCtlPeripheralSleepEnable(BLUE_TIMER_PERIPH);
-	SysCtlPeripheralSleepEnable(RED_TIMER_PERIPH);	//Redundante porque BLUE_TIMER_PERIPH y GREEN_TIMER_PERIPH son el mismo
+	//RGBInit(1);
+	//SysCtlPeripheralSleepEnable(GREEN_TIMER_PERIPH);
+	//SysCtlPeripheralSleepEnable(BLUE_TIMER_PERIPH);
+	//SysCtlPeripheralSleepEnable(RED_TIMER_PERIPH);	//Redundante porque BLUE_TIMER_PERIPH y GREEN_TIMER_PERIPH son el mismo
 
 }
 void confTasks(){
 	/**                                              Creacion de tareas 												**/
 
-		// Crea la tarea que gestiona los comandos UART (definida en el fichero commands.c)
-		//
-		if((xTaskCreate(vUARTTask, (portCHAR *)"Uart", 512,NULL,tskIDLE_PRIORITY + 1, NULL) != pdTRUE))
+	// Crea la tarea que gestiona los comandos UART (definida en el fichero commands.c)
+	//
+	if((xTaskCreate(vUARTTask, (portCHAR *)"Uart", 512,NULL,tskIDLE_PRIORITY + 1, NULL) != pdTRUE))
+	{
+		while(1);
+	}
+
+	UsbSerialInit(32,32);	//Inicializo el  sistema USB
+	//
+	// Crea la tarea que gestiona los comandos USB (definidos en CommandProcessingTask)
+	//
+	if(xTaskCreate(CommandProcessingTask, (portCHAR *)"usbser",512, NULL, tskIDLE_PRIORITY + 2, NULL) != pdTRUE)
+	{
+		while(1);
+	}
+
+
+	if((xTaskCreate(SensorTask, (signed portCHAR *)"Sensor", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + LED1TASKPRIO, NULL) != pdTRUE))
 		{
 			while(1);
 		}
+}
 
-		UsbSerialInit(32,32);	//Inicializo el  sistema USB
-		//
-		// Crea la tarea que gestiona los comandos USB (definidos en CommandProcessingTask)
-		//
-		if(xTaskCreate(CommandProcessingTask, (portCHAR *)"usbser",512, NULL, tskIDLE_PRIORITY + 2, NULL) != pdTRUE)
-		{
-			while(1);
-		}
-
-		//
-		// Ejemplo de creacion de una tarea que parpadea el LED ROJO -> quitar en la aplicacion final
-		//
-		if((xTaskCreate(LEDTask, (signed portCHAR *)"Led1", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + LED1TASKPRIO, NULL) != pdTRUE))
-		{
-			while(1);
-		}
-
+void confADC(){
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);   // Habilita ADC0
+	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_ADC0);
+	ADCSequenceDisable(ADC0_BASE, 1); // Deshabilita el secuenciador 1 del ADC0 para su configuracion
+	// Disparo de muestreo por instrucciones de Timer
+	HWREG(ADC0_BASE + ADC_O_PC) = (ADC_PC_SR_250K);	// usar en lugar de SysCtlADCSpeedSet
+	ADCSequenceConfigure(ADC0_BASE, 1, ADC_TRIGGER_TIMER, 0);
+	ADCHardwareOversampleConfigure(ADC0_BASE, 64);
+	// Configuramos los 4 conversores del secuenciador 1 para muestreo del sensor de temperatura
+	ADCSequenceStepConfigure(ADC0_BASE, 1, 0, ADC_CTL_TS| ADC_CTL_IE | ADC_CTL_END);
+	// Tras configurar el secuenciador, se vuelve a habilitar
+	ADCSequenceEnable(ADC0_BASE, 1);
+	//Asociamos la funci髇 a la interrupci髇
+	ADCIntRegister(ADC0_BASE, 1,ADCIntHandler);
+	//Activamos las interrupciones
+	ADCIntEnable(ADC0_BASE, 1);
 
 }
 
+void confTimer(){
+	// Configuracion TIMER0
+	// Habilita periferico Timer0
+	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER0);
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
+	// Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
+	TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
+
+	uint32_t ui32Period = SysCtlClockGet() *0.1;
+	// Carga la cuenta en el Timer0A
+	TimerLoadSet(TIMER0_BASE, TIMER_A, ui32Period -1);
+	//Configuramos el Timer como el TRIGGER del ADC
+	TimerControlTrigger(TIMER0_BASE,TIMER_A,true);
+	// Activa el Timer0A (empezara a funcionar)
+	TimerEnable(TIMER0_BASE, TIMER_A);
+}
+
+void confQueue(){
+		uint32_t potenciometros[3];
+		potQueue = xQueueCreate( 1, sizeof(potenciometros) );
+}
+
+void ADCIntHandler(){
+
+
+	uint32_t ui32ADC0Value;
+	uint32_t ui32TempValueC, ui32TempValueF;
+	BaseType_t xHigherPriorityTaskWoken;
+	xHigherPriorityTaskWoken = pdFALSE;
+
+
+	ADCIntClear(ADC0_BASE, 1); // Limpia el flag de interrupcion del ADC
+
+	// Tras haber finalizado la conversion, leemos los datos del secuenciador
+	  ADCSequenceDataGet(ADC0_BASE, 1, &ui32ADC0Value);
+
+	// Y lo convertimos a grados centigrados, usando la formula indicada en el Data Sheet
+	 ui32TempValueC = (1475 - ((2475 * ui32ADC0Value)) / 4096)/10;
+	 ui32TempValueF = ((ui32TempValueC * 9) + 160) / 5;
+	 //Enviamos el dato a la tarea
+	 uint32_t potenciometros[3];
+	 potenciometros[0]=ui32TempValueC;
+	 xQueueSendFromISR( potQueue,potenciometros,&xHigherPriorityTaskWoken);
+}
