@@ -46,7 +46,8 @@ typedef enum {
 	COMANDO_PING,
 	COMANDO_LEDS,
 	COMANDO_START,
-	COMANDO_STOP
+	COMANDO_STOP,
+	COMANDO_EJES
 	//etc, etc...
 } commandTypes;
 

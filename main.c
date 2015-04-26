@@ -28,6 +28,9 @@
 
 #define LED1TASKPRIO 1
 #define LED1TASKSTACKSIZE 128
+#define PITCH 0
+#define ROLL 1
+#define YAW 2
 
 //Globales
 
@@ -215,6 +218,8 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 		{
 
 	uint32_t potenciometros[3];
+	int16_t ejes[2];
+	unsigned char frame[MAX_FRAME_SIZE];
 
 	//
 	// Bucle infinito, las tareas en FreeRTOS no pueden "acabar", deben "matarse" con la funcion xTaskDelete().
@@ -222,7 +227,12 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 	while(1)
 	{
 		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
-		UARTprintf("Valores %i, %i, %i \n",potenciometros[0],potenciometros[1],potenciometros[2] );
+		ejes[PITCH]=(potenciometros[PITCH]*60)/4096-30;
+		ejes[ROLL]=(potenciometros[ROLL]*90)/4096-45;
+		//ejes[YAW]=(potenciometros[YAW]*180)/4096-90;
+
+		create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
+		send_frame(frame, MAX_FRAME_SIZE);
 	}
 }
 
