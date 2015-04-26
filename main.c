@@ -38,6 +38,7 @@ uint32_t g_ui32CPUUsage;
 uint32_t g_ulSystemClock;
 
 QueueHandle_t potQueue;
+SemaphoreHandle_t SendSemaphore;
 
 extern void vUARTTask( void *pvParameters );
 
@@ -116,7 +117,7 @@ extern void vUARTTask( void *pvParameters );
 
 // Codigo para procesar los comandos recibidos a traves del canal USB
 static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
-
+	//xSemaphoreTake( SendSemaphore, portMAX_DELAY );
 
 	unsigned char frame[MAX_FRAME_SIZE];	//Ojo, esto hace que esta tarea necesite bastante pila
 	int numdatos;
@@ -125,6 +126,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 
 	/* The parameters are not used. */
 	( void ) pvParameters;
+
 
 	for(;;)
 	{
@@ -146,6 +148,8 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 				switch(command)
 				{
 				case COMANDO_PING :
+
+					UARTprintf("Comando PING\n ");
 					//A un comando de ping se responde con el propio comando
 					numdatos=create_frame(frame,command,0,0,MAX_FRAME_SIZE);
 					if (numdatos>=0)
@@ -170,19 +174,31 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 						}
 					}
 					break;
-				case COMANDO_LEDS:         // Comando de ejemplo: eliminar en la aplicacion final
+				case COMANDO_START:         // Comando de ejemplo: eliminar en la aplicacion final
 				{
 					PARAM_COMANDO_LEDS parametro;
-					uint32_t g_ulColors[3] = { 0x0000, 0x0000, 0x0000 };
+					UARTprintf("Comando START\n ");
 
 					if (check_command_param_size(numdatos,sizeof(parametro)))
 					{
-						extract_packet_command_param(frame,sizeof(parametro),&parametro);
-						g_ulColors[0]= parametro.leds.red ? 0x8000 : 0x0000;
-						g_ulColors[1]=parametro.leds.green ? 0x8000 : 0x0000;
-						g_ulColors[2]= parametro.leds.blue ? 0x8000 : 0x0000;
-
-						RGBColorSet(g_ulColors);
+						xSemaphoreGive( SendSemaphore );
+					}
+					else
+					{
+						//Error en estructura de trama
+						errors++;
+						// Procesamiento del error PROT_ERROR_INCONSISTENT_FRAME_FORMAT (TODO)
+					}
+				}
+				break;
+				case COMANDO_STOP:         // Comando de ejemplo: eliminar en la aplicacion final
+				{
+					PARAM_COMANDO_LEDS parametro;
+					uint32_t g_ulColors[3] = { 0x0000, 0x0000, 0x0000 };
+					UARTprintf("Comando STOP\n ");
+					if (check_command_param_size(numdatos,sizeof(parametro)))
+					{
+						xSemaphoreTake( SendSemaphore, portMAX_DELAY );
 					}
 					else
 					{
@@ -228,6 +244,7 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 	while(1)
 	{
 		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
+
 		ejes[PITCH]=(potenciometros[PITCH]*90)/4096-45;
 		ejes[ROLL]=(potenciometros[ROLL]*60)/4096-30;
 		//ejes[YAW]=(potenciometros[YAW]*180)/4096-90;
@@ -235,6 +252,7 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 		if(ejes[PITCH]!=lastEjes[PITCH] || ejes[ROLL]!=lastEjes[ROLL]){
 			create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
 			send_frame(frame, MAX_FRAME_SIZE);
+			UARTprintf("Valores: %i %i \n ",ejes[PITCH], ejes[ROLL]);
 		}
 
 		lastEjes[PITCH]=ejes[PITCH];
@@ -273,6 +291,9 @@ int main(void)
 	confGPIO();
 	confADC();
 	confQueue();
+
+
+	SendSemaphore = xSemaphoreCreateMutex();
 
 	//
 	// Mensaje de bienvenida inicial.
@@ -336,11 +357,11 @@ void confUART(){
 }
 void confGPIO(){
 	//Inicializa el puerto F (LEDs) --> No hace falta si usamos la libreria RGB
-	//    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
-	//    ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
-	//    ROM_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);	//LEDS APAGADOS
+	 //   ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+	 // ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
+	    //ROM_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);	//LEDS APAGADOS
 
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
+	//ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
 
 	//Inicializa los LEDs usando libreria RGB --> usa Timers 0 y 1 (eliminar si no se usa finalmente)
 	//RGBInit(1);
@@ -360,19 +381,17 @@ void confTasks(){
 	}
 
 	UsbSerialInit(32,32);	//Inicializo el  sistema USB
-	//
-	// Crea la tarea que gestiona los comandos USB (definidos en CommandProcessingTask)
-	//
+
 	if(xTaskCreate(CommandProcessingTask, (portCHAR *)"usbser",512, NULL, tskIDLE_PRIORITY + 2, NULL) != pdTRUE)
 	{
 		while(1);
 	}
 
 
-	if((xTaskCreate(SensorTask, (signed portCHAR *)"Sensor", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + LED1TASKPRIO, NULL) != pdTRUE))
-		{
-			while(1);
-		}
+	if((xTaskCreate(SensorTask, (signed portCHAR *)"Sensor", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, NULL) != pdTRUE))
+	{
+		while(1);
+	}
 }
 
 void confADC(){

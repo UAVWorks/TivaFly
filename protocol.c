@@ -6,6 +6,8 @@
 
 #include <stdlib.h>
 
+extern SendSemaphore;
+
 //Funcion que realiza el stuffining en una trama. 
 int frame_stuffing(unsigned char *origen, unsigned char *destino,int longitud, int longitud_maxima)
 {
@@ -197,12 +199,13 @@ int receive_frame(unsigned char *frame, int maxFrameSize)
 int send_frame(unsigned char *frame, int FrameSize)
 {
 	int i;
+	xSemaphoreTake( SendSemaphore, portMAX_DELAY );
 	
 	for(i=FrameSize;i>0;i--)
 	{
 		xUSBSerialPutChar(  *frame++, portMAX_DELAY);
 	}
-	
+	xSemaphoreGive(SendSemaphore);
 	return FrameSize;	
 }
 
