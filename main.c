@@ -219,6 +219,7 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 
 	uint32_t potenciometros[3];
 	int16_t ejes[2];
+	int16_t lastEjes[2]={0,0};
 	unsigned char frame[MAX_FRAME_SIZE];
 
 	//
@@ -227,12 +228,18 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 	while(1)
 	{
 		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
-		ejes[PITCH]=(potenciometros[PITCH]*60)/4096-30;
-		ejes[ROLL]=(potenciometros[ROLL]*90)/4096-45;
+		ejes[PITCH]=(potenciometros[PITCH]*90)/4096-45;
+		ejes[ROLL]=(potenciometros[ROLL]*60)/4096-30;
 		//ejes[YAW]=(potenciometros[YAW]*180)/4096-90;
 
-		create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
-		send_frame(frame, MAX_FRAME_SIZE);
+		if(ejes[PITCH]!=lastEjes[PITCH] || ejes[ROLL]!=lastEjes[ROLL]){
+			create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
+			send_frame(frame, MAX_FRAME_SIZE);
+		}
+
+		lastEjes[PITCH]=ejes[PITCH];
+		lastEjes[ROLL]=ejes[ROLL];
+
 	}
 }
 
@@ -403,7 +410,7 @@ void confTimer(){
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
 	// Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
 	TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
-	uint32_t ui32Period = SysCtlClockGet() *2;
+	uint32_t ui32Period = SysCtlClockGet() *0.1;
 	// Carga la cuenta en el Timer0A
 	TimerLoadSet(TIMER0_BASE, TIMER_A, ui32Period -1);
 	//Configuramos el Timer como el TRIGGER del ADC
