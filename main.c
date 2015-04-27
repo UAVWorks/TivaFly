@@ -115,14 +115,51 @@ void vApplicationMallocFailedHook (void)
 //Aqui solo la declaramos para poderla referenciar en la funcion main
 extern void vUARTTask( void *pvParameters );
 
+
+
+static portTASK_FUNCTION(SensorTask,pvParameters)
+		{
+
+	uint32_t potenciometros[3];
+	int16_t ejes[2];
+	int16_t lastEjes[2]={0,0};
+	unsigned char frame[MAX_FRAME_SIZE];
+
+	//
+	// Bucle infinito, las tareas en FreeRTOS no pueden "acabar", deben "matarse" con la funcion xTaskDelete().
+	//
+	while(1)
+	{
+		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
+
+		ejes[PITCH]=(potenciometros[PITCH]*90)/4096-45;
+		ejes[ROLL]=(potenciometros[ROLL]*60)/4096-30;
+		//ejes[YAW]=(potenciometros[YAW]*180)/4096-90;
+
+		if(ejes[PITCH]!=lastEjes[PITCH] || ejes[ROLL]!=lastEjes[ROLL]){
+			create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
+			send_frame(frame, MAX_FRAME_SIZE);
+			UARTprintf("Valores: %i %i \n ",ejes[PITCH], ejes[ROLL]);
+			lastEjes[PITCH]=ejes[PITCH];
+			lastEjes[ROLL]=ejes[ROLL];
+		}
+
+
+
+	}
+}
+
 // Codigo para procesar los comandos recibidos a traves del canal USB
 static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
-	//xSemaphoreTake( SendSemaphore, portMAX_DELAY );
+
+
 
 	unsigned char frame[MAX_FRAME_SIZE];	//Ojo, esto hace que esta tarea necesite bastante pila
 	int numdatos;
 	unsigned int errors=0;
 	unsigned char command;
+
+	TaskHandle_t sensorTaskHandle = NULL;
 
 	/* The parameters are not used. */
 	( void ) pvParameters;
@@ -176,36 +213,24 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 					break;
 				case COMANDO_START:         // Comando de ejemplo: eliminar en la aplicacion final
 				{
-					PARAM_COMANDO_LEDS parametro;
+
 					UARTprintf("Comando START\n ");
 
-					if (check_command_param_size(numdatos,sizeof(parametro)))
+					sensorTaskHandle =xTaskCreate(SensorTask, (signed portCHAR *)"Sensor", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, NULL);
+
+					if((sensorTaskHandle != pdTRUE))
 					{
-						xSemaphoreGive( SendSemaphore );
+						while(1);
 					}
-					else
-					{
-						//Error en estructura de trama
-						errors++;
-						// Procesamiento del error PROT_ERROR_INCONSISTENT_FRAME_FORMAT (TODO)
-					}
+
 				}
 				break;
 				case COMANDO_STOP:         // Comando de ejemplo: eliminar en la aplicacion final
 				{
-					PARAM_COMANDO_LEDS parametro;
-					uint32_t g_ulColors[3] = { 0x0000, 0x0000, 0x0000 };
+
 					UARTprintf("Comando STOP\n ");
-					if (check_command_param_size(numdatos,sizeof(parametro)))
-					{
-						xSemaphoreTake( SendSemaphore, portMAX_DELAY );
-					}
-					else
-					{
-						//Error en estructura de trama
-						errors++;
-						// Procesamiento del error PROT_ERROR_INCONSISTENT_FRAME_FORMAT (TODO)
-					}
+
+					vTaskDelete( sensorTaskHandle );
 				}
 				break;
 				default:
@@ -230,36 +255,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 	}
 }
 
-static portTASK_FUNCTION(SensorTask,pvParameters)
-		{
 
-	uint32_t potenciometros[3];
-	int16_t ejes[2];
-	int16_t lastEjes[2]={0,0};
-	unsigned char frame[MAX_FRAME_SIZE];
-
-	//
-	// Bucle infinito, las tareas en FreeRTOS no pueden "acabar", deben "matarse" con la funcion xTaskDelete().
-	//
-	while(1)
-	{
-		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
-
-		ejes[PITCH]=(potenciometros[PITCH]*90)/4096-45;
-		ejes[ROLL]=(potenciometros[ROLL]*60)/4096-30;
-		//ejes[YAW]=(potenciometros[YAW]*180)/4096-90;
-
-		if(ejes[PITCH]!=lastEjes[PITCH] || ejes[ROLL]!=lastEjes[ROLL]){
-			create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
-			send_frame(frame, MAX_FRAME_SIZE);
-			UARTprintf("Valores: %i %i \n ",ejes[PITCH], ejes[ROLL]);
-		}
-
-		lastEjes[PITCH]=ejes[PITCH];
-		lastEjes[ROLL]=ejes[ROLL];
-
-	}
-}
 
 
 // Rutinas de Interrupcion
@@ -359,9 +355,12 @@ void confGPIO(){
 	//Inicializa el puerto F (LEDs) --> No hace falta si usamos la libreria RGB
 	 //   ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 	 // ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
-	    //ROM_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);	//LEDS APAGADOS
+	//ROM_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);	//LEDS APAGADOS
 
-	//ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
+	GPIOPinTypeGPIOInput(GPIO_PORTE_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
+	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_GPIOE);
+
 
 	//Inicializa los LEDs usando libreria RGB --> usa Timers 0 y 1 (eliminar si no se usa finalmente)
 	//RGBInit(1);
@@ -388,15 +387,12 @@ void confTasks(){
 	}
 
 
-	if((xTaskCreate(SensorTask, (signed portCHAR *)"Sensor", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, NULL) != pdTRUE))
-	{
-		while(1);
-	}
+
 }
 
 void confADC(){
 
-	IntPrioritySet(INT_ADC0SS0,5);
+
 
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);   // Habilita ADC0
 	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_ADC0);
@@ -412,6 +408,7 @@ void confADC(){
 	ADCSequenceStepConfigure(ADC0_BASE, 0, 1, ADC_CTL_CH1); //Sequencer Step 1: Samples Channel PE2
 	ADCSequenceStepConfigure(ADC0_BASE, 0, 2, ADC_CTL_CH2 | ADC_CTL_IE | ADC_CTL_END); //Sequencer Step 2: Samples Channel PE1
 
+	IntPrioritySet(INT_ADC0SS0,5<<5);
 	// Tras configurar el secuenciador, se vuelve a habilitar
 	ADCSequenceEnable(ADC0_BASE, 0);
 	//Asociamos la función a la interrupción
@@ -425,8 +422,10 @@ void confADC(){
 void confTimer(){
 	// Configuracion TIMER0
 	// Habilita periferico Timer0
-	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER0);
+
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
+	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER0);
+	TimerControlStall(TIMER0_BASE,TIMER_A,true);
 	// Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
 	TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
 	uint32_t ui32Period = SysCtlClockGet() *0.1;
