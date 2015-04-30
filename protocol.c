@@ -93,11 +93,11 @@ int add_checksum_and_stuff(unsigned char *frame,int size, int max_size)
 	
 	checksum=create_checksum(frame,size);	//Calcula el checksum del paquete antes del Stuffing
 	frame[size]=(unsigned char)(checksum&0x0FF);
-	frame[size+1]=(unsigned char)(checksum>>8);	//Añade el checksum
+	frame[size+1]=(unsigned char)(checksum>>8);	//Aï¿½ade el checksum
 	size+=CHECKSUM_SIZE;
 
 	//Hace una copia temporal del paquete
-	//Se hace siempre del mismo tamaño para que no se fragmente el Heap
+	//Se hace siempre del mismo tamaï¿½o para que no se fragmente el Heap
 	ptrtochar=(unsigned char *)pvPortMalloc(max_size);	
 	if (!ptrtochar) 
 	{

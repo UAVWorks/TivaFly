@@ -26,7 +26,7 @@
 
 #define MINIMUN_FRAME_SIZE (START_SIZE+COMMAND_SIZE+CHECKSUM_SIZE+END_SIZE)
 
-#define MAX_DATA_SIZE (32)
+#define MAX_DATA_SIZE (48)
 #define MAX_FRAME_SIZE (2*(MAX_DATA_SIZE))
 
 
@@ -47,7 +47,8 @@ typedef enum {
 	COMANDO_LEDS,
 	COMANDO_START,
 	COMANDO_STOP,
-	COMANDO_EJES
+	COMANDO_EJES,
+	COMANDO_SPEED
 	//etc, etc...
 } commandTypes;
 
@@ -69,14 +70,7 @@ typedef struct {
 	unsigned char command;
 } PACKED PARAM_COMANDO_NO_IMPLEMENTADO;
 
-typedef union{
-	struct {
-                unsigned char red:1;
-                unsigned char green:1;
-                unsigned char blue:1;
-	} PACKED leds;
-    unsigned char valor;
-} PACKED PARAM_COMANDO_LEDS;
+
 
 
 //#pragma pack()	//...Pero solo para los comandos que voy a intercambiar, no para el resto.

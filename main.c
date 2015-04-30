@@ -38,6 +38,7 @@ uint32_t g_ui32CPUUsage;
 uint32_t g_ulSystemClock;
 
 QueueHandle_t potQueue;
+QueueHandle_t velocidadQueue;
 SemaphoreHandle_t SendSemaphore;
 
 extern void vUARTTask( void *pvParameters );
@@ -121,9 +122,10 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 		{
 
 	uint32_t potenciometros[3];
-	int16_t ejes[2];
-	int16_t lastEjes[2]={0,0};
+	int16_t ejes[3];
+	int16_t lastEjes[3]={0,0,0};
 	unsigned char frame[MAX_FRAME_SIZE];
+	int num_datos;
 
 	//
 	// Bucle infinito, las tareas en FreeRTOS no pueden "acabar", deben "matarse" con la funcion xTaskDelete().
@@ -134,17 +136,40 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 
 		ejes[PITCH]=(potenciometros[PITCH]*90)/4096-45;
 		ejes[ROLL]=(potenciometros[ROLL]*60)/4096-30;
-		//ejes[YAW]=(potenciometros[YAW]*180)/4096-90;
+		ejes[YAW]=(potenciometros[YAW]*360)/4096;
 
-		if(ejes[PITCH]!=lastEjes[PITCH] || ejes[ROLL]!=lastEjes[ROLL]){
-			create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
-			send_frame(frame, MAX_FRAME_SIZE);
-			UARTprintf("Valores: %i %i \n ",ejes[PITCH], ejes[ROLL]);
+		if(ejes[PITCH]!=lastEjes[PITCH] || ejes[ROLL]!=lastEjes[ROLL] || ejes[YAW]!=lastEjes[YAW]){
+			num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
+			if (num_datos>=0){
+			send_frame(frame, num_datos);
+			}
+			//UARTprintf("Valores: %i %i \n ",ejes[PITCH], ejes[ROLL]);
 			lastEjes[PITCH]=ejes[PITCH];
 			lastEjes[ROLL]=ejes[ROLL];
+			lastEjes[YAW]=ejes[YAW];
 		}
 
+	}
+}
 
+static portTASK_FUNCTION(ConsumoTask,pvParameters)
+{
+
+	uint32_t  velocidad;
+	float intensidad;
+	uint32_t color[3];
+	color[GREEN]=0x0;
+	color[BLUE]=0xFFFF;
+	color[RED]=0x0;
+	//
+	// Bucle infinito, las tareas en FreeRTOS no pueden "acabar", deben "matarse" con la funcion xTaskDelete().
+	//
+	while(1)
+	{
+		xQueueReceive(velocidadQueue,&velocidad,portMAX_DELAY);
+		UARTprintf("Velocidad %i\n ",velocidad);
+		intensidad = ((float)velocidad)/241;
+		RGBSet(color,intensidad);
 
 	}
 }
@@ -160,6 +185,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 	unsigned char command;
 
 	TaskHandle_t sensorTaskHandle = NULL;
+	TaskHandle_t consumoTaskHandle = NULL;
 
 	/* The parameters are not used. */
 	( void ) pvParameters;
@@ -215,9 +241,12 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 				{
 
 					UARTprintf("Comando START\n ");
+					if(sensorTaskHandle == NULL){
 
 					sensorTaskHandle =xTaskCreate(SensorTask, (signed portCHAR *)"Sensor", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, NULL);
+					consumoTaskHandle =xTaskCreate(ConsumoTask, (signed portCHAR *)"Consumo", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, NULL);
 
+					}
 					if((sensorTaskHandle != pdTRUE))
 					{
 						while(1);
@@ -231,6 +260,23 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 					UARTprintf("Comando STOP\n ");
 
 					vTaskDelete( sensorTaskHandle );
+					vTaskDelete( consumoTaskHandle );
+					sensorTaskHandle=NULL;
+					consumoTaskHandle=NULL;
+				}
+				break;
+				case COMANDO_SPEED:         // Comando de ejemplo: eliminar en la aplicacion final
+				{
+
+					UARTprintf("Comando VEL\n ");
+
+					uint32_t  velocidad;
+
+
+					extract_packet_command_param(frame,sizeof(velocidad),&velocidad);
+					xQueueSend( velocidadQueue,&velocidad,portMAX_DELAY);
+
+
 				}
 				break;
 				default:
@@ -363,9 +409,10 @@ void confGPIO(){
 
 
 	//Inicializa los LEDs usando libreria RGB --> usa Timers 0 y 1 (eliminar si no se usa finalmente)
-	//RGBInit(1);
-	//SysCtlPeripheralSleepEnable(GREEN_TIMER_PERIPH);
-	//SysCtlPeripheralSleepEnable(BLUE_TIMER_PERIPH);
+	RGBInit(1);
+	SysCtlPeripheralSleepEnable(GREEN_TIMER_PERIPH);
+	SysCtlPeripheralSleepEnable(BLUE_TIMER_PERIPH);
+	RGBEnable();
 	//SysCtlPeripheralSleepEnable(RED_TIMER_PERIPH);	//Redundante porque BLUE_TIMER_PERIPH y GREEN_TIMER_PERIPH son el mismo
 
 }
@@ -411,7 +458,7 @@ void confADC(){
 	IntPrioritySet(INT_ADC0SS0,5<<5);
 	// Tras configurar el secuenciador, se vuelve a habilitar
 	ADCSequenceEnable(ADC0_BASE, 0);
-	//Asociamos la función a la interrupción
+	//Asociamos la funciï¿½n a la interrupciï¿½n
 	ADCIntRegister(ADC0_BASE, 0,ADCIntHandler);
 	//Activamos las interrupciones
 	ADCIntEnable(ADC0_BASE,0);
@@ -423,23 +470,25 @@ void confTimer(){
 	// Configuracion TIMER0
 	// Habilita periferico Timer0
 
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
-	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER0);
-	TimerControlStall(TIMER0_BASE,TIMER_A,true);
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER2);
+	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER2);
+	TimerControlStall(TIMER2_BASE,TIMER_A,true);
 	// Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
-	TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
+	TimerConfigure(TIMER2_BASE, TIMER_CFG_PERIODIC);
 	uint32_t ui32Period = SysCtlClockGet() *0.1;
 	// Carga la cuenta en el Timer0A
-	TimerLoadSet(TIMER0_BASE, TIMER_A, ui32Period -1);
+	TimerLoadSet(TIMER2_BASE, TIMER_A, ui32Period -1);
 	//Configuramos el Timer como el TRIGGER del ADC
-	TimerControlTrigger(TIMER0_BASE,TIMER_A,true);
+	TimerControlTrigger(TIMER2_BASE,TIMER_A,true);
 	// Activa el Timer0A (empezara a funcionar)
-	TimerEnable(TIMER0_BASE, TIMER_A);
+	TimerEnable(TIMER2_BASE, TIMER_A);
 }
 
 void confQueue(){
 		uint32_t potenciometros[3];
 		potQueue = xQueueCreate( 1, sizeof(potenciometros) );
+
+		velocidadQueue=xQueueCreate(1,sizeof(uint32_t));
 }
 
 void ADCIntHandler(){
