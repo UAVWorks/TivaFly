@@ -25,6 +25,8 @@
 #include "usb_dev_serial.h"
 #include "protocol.h"
 
+#include <cmath>
+
 
 #define LED1TASKPRIO 1
 #define LED1TASKSTACKSIZE 128
@@ -41,8 +43,14 @@ QueueHandle_t potQueue;
 QueueHandle_t velocidadQueue;
 SemaphoreHandle_t SendSemaphore;
 
+TaskHandle_t sensorTaskHandle = NULL;
+TaskHandle_t consumoTaskHandle = NULL;
+
 extern void vUARTTask( void *pvParameters );
 
+int16_t ejes[3];
+uint32_t  velocidad=60;
+uint32_t combustible=100;
 
 //*****************************************************************************
 //
@@ -122,7 +130,7 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 		{
 
 	uint32_t potenciometros[3];
-	int16_t ejes[3];
+
 	int16_t lastEjes[3]={0,0,0};
 	unsigned char frame[MAX_FRAME_SIZE];
 	int num_datos;
@@ -155,22 +163,65 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 static portTASK_FUNCTION(ConsumoTask,pvParameters)
 {
 
-	uint32_t  velocidad;
-	float intensidad;
+
+	double consumo=0;
 	uint32_t color[3];
 	color[GREEN]=0x0;
 	color[BLUE]=0xFFFF;
 	color[RED]=0x0;
-	//
-	// Bucle infinito, las tareas en FreeRTOS no pueden "acabar", deben "matarse" con la funcion xTaskDelete().
-	//
+	TickType_t tiempo_ant =xTaskGetTickCount(  );
+	TickType_t tiempo_ant_combustible =xTaskGetTickCount(  );
+
+	unsigned char frame[MAX_FRAME_SIZE];
+	int num_datos;
+
 	while(1)
 	{
-		xQueueReceive(velocidadQueue,&velocidad,portMAX_DELAY);
-		UARTprintf("Velocidad %i\n ",velocidad);
-		intensidad = ((float)velocidad)/241;
-		RGBSet(color,intensidad);
+		if(combustible>0){
+			if( xQueueReceive(velocidadQueue,&velocidad, ( TickType_t ) configTICK_RATE_HZ) )
+			{
+				//Con cada cambio de velocidad
+				RGBSet(color,((float)velocidad)/241);
+				consumo=0.0374*exp(0.02*((velocidad*100)/240));
+				tiempo_ant =xTaskGetTickCount();
+			}else{
+				if((xTaskGetTickCount()-tiempo_ant_combustible)>=configTICK_RATE_HZ*60 && combustible>0){
+					//Cada 60 seg Reales- 1 hora simulada
+					if(combustible >0){
+						combustible -= ((xTaskGetTickCount()-tiempo_ant)/configTICK_RATE_HZ)*consumo;
+						tiempo_ant =xTaskGetTickCount();
+					}
+					num_datos=create_frame(frame, COMANDO_FUEL, &combustible, sizeof(combustible), MAX_FRAME_SIZE);
+					if (num_datos>=0){
+						send_frame(frame, num_datos);
+					}
+					tiempo_ant_combustible =xTaskGetTickCount();
+				}
+			}
 
+
+			if(combustible <=0){
+				combustible=0;
+				num_datos=create_frame(frame, COMANDO_FUEL, &combustible, sizeof(combustible), MAX_FRAME_SIZE);
+				if (num_datos>=0){
+					send_frame(frame, num_datos);
+				}
+
+
+				//vTaskDelete(sensorTaskHandle);
+			}
+		}else{
+			vTaskDelay(configTICK_RATE_HZ);
+			if(ejes[PITCH]>-45){
+				ejes[PITCH]--;
+				num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
+				if (num_datos>=0){
+					send_frame(frame, num_datos);
+				}
+			}else{
+				vTaskDelete(NULL);
+			}
+		}
 	}
 }
 
@@ -184,8 +235,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 	unsigned int errors=0;
 	unsigned char command;
 
-	TaskHandle_t sensorTaskHandle = NULL;
-	TaskHandle_t consumoTaskHandle = NULL;
+
 
 	/* The parameters are not used. */
 	( void ) pvParameters;
@@ -259,7 +309,8 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 
 					UARTprintf("Comando STOP\n ");
 
-					vTaskDelete( sensorTaskHandle );
+
+					//vTaskDelete(sensorTaskHandle);
 					vTaskDelete( consumoTaskHandle );
 					sensorTaskHandle=NULL;
 					consumoTaskHandle=NULL;
@@ -458,8 +509,9 @@ void confADC(){
 	IntPrioritySet(INT_ADC0SS0,5<<5);
 	// Tras configurar el secuenciador, se vuelve a habilitar
 	ADCSequenceEnable(ADC0_BASE, 0);
-	//Asociamos la funciï¿½n a la interrupciï¿½n
+	//Asociamos la funciï¿½n a la interrupción
 	ADCIntRegister(ADC0_BASE, 0,ADCIntHandler);
+
 	//Activamos las interrupciones
 	ADCIntEnable(ADC0_BASE,0);
 

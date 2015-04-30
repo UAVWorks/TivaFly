@@ -48,7 +48,8 @@ typedef enum {
 	COMANDO_START,
 	COMANDO_STOP,
 	COMANDO_EJES,
-	COMANDO_SPEED
+	COMANDO_SPEED,
+	COMANDO_FUEL
 	//etc, etc...
 } commandTypes;
 

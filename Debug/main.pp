@@ -41,6 +41,11 @@ main.obj: ../usb_dev_serial.h
 main.obj: ../protocol.h
 main.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdlib.h
 main.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/string.h
+main.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/cmath
+main.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/math.h
+main.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/ymath.h
+main.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/float.h
+main.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/mathcpp.h
 
 ../main.c: 
 C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdbool.h: 
@@ -83,3 +88,8 @@ E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/semphr.h:
 ../protocol.h: 
 C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdlib.h: 
 C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/string.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/cmath: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/math.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/ymath.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/float.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/mathcpp.h: 
