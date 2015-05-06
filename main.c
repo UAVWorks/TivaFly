@@ -51,9 +51,10 @@ extern void vUARTTask( void *pvParameters );
 
 int16_t ejes[3];
 uint32_t  velocidad=60;
-uint32_t combustible=100;
+double combustible=100;
 uint32_t hora=0;
-uint32_t altitud=3000;
+double  altitud=3000;
+uint32_t color[3];
 
 //*****************************************************************************
 //
@@ -139,12 +140,29 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 		vTaskDelay(configTICK_RATE_HZ);
 
 		xSemaphoreTake( EjesSemaphore, portMAX_DELAY );
-		altitud += sin((ejes[PITCH]*3.14)/180)*velocidad*60;
+		altitud += sin((ejes[PITCH]*3.14)/180) *(velocidad*(1000/60)); //pasar a de minutos a horas y km a m
 		xSemaphoreGive(EjesSemaphore);
 
-		num_datos=create_frame(frame, COMANDO_HIGH, altitud, sizeof(altitud), MAX_FRAME_SIZE);
+		num_datos=create_frame(frame, COMANDO_HIGH, &altitud, sizeof(altitud), MAX_FRAME_SIZE);
 		if (num_datos>=0){
 			send_frame(frame, num_datos);
+		}
+
+		if(combustible==0){
+			color[BLUE]=0xFFFF;
+			if(altitud<=800){
+				color[RED]=0xFFFF;
+			}
+			RGBColorSet(color);
+			RGBBlinkRateSet(1000/altitud);
+		}
+
+
+		if(altitud<=0){
+			//ENVIAR COMANDO COLISION
+
+			//BLOQUEAR TIVA
+
 		}
 
 	}
@@ -200,14 +218,18 @@ static portTASK_FUNCTION(TimeTask,pvParameters)
 			send_frame(frame, num_datos);
 		}
 
+		if(combustible==0){
+			velocidad+=9.8/(60*1000);
+		}
+
 	}
 }
 
 static portTASK_FUNCTION(ConsumoTask,pvParameters)
 {
 
-	double consumo=0;
-	uint32_t color[3];
+	double consumo=0.0374*exp(0.02*((velocidad*100)/240));
+
 	color[GREEN]=0x0;
 	color[BLUE]=0x0;
 	color[RED]=0x0;
@@ -225,9 +247,11 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 				//Con cada cambio de velocidad
 				color[BLUE]=0xFFFF;
 				RGBSet(color,((float)velocidad)/241);
-				consumo=0.0374*exp(0.02*((velocidad*100)/240));
+				//consumo=0.0374*exp(0.02*((velocidad*100)/240));
+				consumo=50;
 				tiempo_ant =xTaskGetTickCount();
-			}else{
+			}
+
 				if((xTaskGetTickCount()-tiempo_ant_combustible)>=configTICK_RATE_HZ*60 && combustible>0){
 					//Cada 60 seg Reales- 1 hora simulada
 					if(combustible >0){
@@ -240,7 +264,7 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 					}
 					tiempo_ant_combustible =xTaskGetTickCount();
 				}
-			}
+
 
 
 			if(combustible <=0){
@@ -353,7 +377,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 						{
 							while(1);
 						}
-						if((xTaskCreate(HighTask, (signed portCHAR *)"Altitud", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &sensorTaskHandle) != pdTRUE))
+						if((xTaskCreate(HighTask, (signed portCHAR *)"Altitud", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, NULL) != pdTRUE))
 						{
 							while(1);
 						}

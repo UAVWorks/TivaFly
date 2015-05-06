@@ -1,55 +1,55 @@
 # FIXED
 
 protocol.obj: ../protocol.c
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/FreeRTOS.h
-protocol.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stddef.h
-protocol.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdint.h
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOSConfig.h
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/utils/RunTimeStatsConfig.h
-protocol.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdbool.h
-protocol.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/yvals.h
-protocol.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdarg.h
-protocol.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/linkage.h
-protocol.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/_lock.h
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/projdefs.h
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/portable.h
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/deprecated_definitions.h
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/portable/CCS/ARM_CM4F/portmacro.h
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/mpu_wrappers.h
+protocol.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/FreeRTOS.h
+protocol.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stddef.h
+protocol.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdint.h
+protocol.obj: E:/workspace/base-practica_TIVA/FreeRTOSConfig.h
+protocol.obj: E:/workspace/base-practica_TIVA/utils/RunTimeStatsConfig.h
+protocol.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdbool.h
+protocol.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/yvals.h
+protocol.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdarg.h
+protocol.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/linkage.h
+protocol.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/_lock.h
+protocol.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/projdefs.h
+protocol.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/portable.h
+protocol.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/deprecated_definitions.h
+protocol.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/portable/CCS/ARM_CM4F/portmacro.h
+protocol.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/mpu_wrappers.h
 protocol.obj: ../crc.h
 protocol.obj: ../usb_dev_serial.h
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/task.h
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/list.h
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/queue.h
-protocol.obj: /home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/semphr.h
+protocol.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/task.h
+protocol.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/list.h
+protocol.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/queue.h
+protocol.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/semphr.h
 protocol.obj: ../protocol.h
-protocol.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdlib.h
-protocol.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/string.h
-protocol.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdlib.h
+protocol.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdlib.h
+protocol.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/string.h
+protocol.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdlib.h
 
 ../protocol.c: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/FreeRTOS.h: 
-/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stddef.h: 
-/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdint.h: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOSConfig.h: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/utils/RunTimeStatsConfig.h: 
-/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdbool.h: 
-/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/yvals.h: 
-/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdarg.h: 
-/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/linkage.h: 
-/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/_lock.h: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/projdefs.h: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/portable.h: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/deprecated_definitions.h: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/portable/CCS/ARM_CM4F/portmacro.h: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/mpu_wrappers.h: 
+E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/FreeRTOS.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stddef.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdint.h: 
+E:/workspace/base-practica_TIVA/FreeRTOSConfig.h: 
+E:/workspace/base-practica_TIVA/utils/RunTimeStatsConfig.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdbool.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/yvals.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdarg.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/linkage.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/_lock.h: 
+E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/projdefs.h: 
+E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/portable.h: 
+E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/deprecated_definitions.h: 
+E:/workspace/base-practica_TIVA/FreeRTOS/Source/portable/CCS/ARM_CM4F/portmacro.h: 
+E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/mpu_wrappers.h: 
 ../crc.h: 
 ../usb_dev_serial.h: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/task.h: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/list.h: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/queue.h: 
-/home/gitt/workspace_v6_0/ybns/base-practica_TIVA/FreeRTOS/Source/include/semphr.h: 
+E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/task.h: 
+E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/list.h: 
+E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/queue.h: 
+E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/semphr.h: 
 ../protocol.h: 
-/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdlib.h: 
-/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/string.h: 
-/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdlib.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdlib.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/string.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdlib.h: 
