@@ -36,6 +36,8 @@ main.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/queue.h
 main.obj: E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/semphr.h
 main.obj: ../utils/cpu_usage.h
 main.obj: ../inc/hw_adc.h
+main.obj: ../FreeRTOS/source/include/event_groups.h
+main.obj: ../FreeRTOS/source/include/timers.h
 main.obj: ../drivers/rgb.h
 main.obj: ../usb_dev_serial.h
 main.obj: ../protocol.h
@@ -83,6 +85,8 @@ E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/queue.h:
 E:/workspace/base-practica_TIVA/FreeRTOS/Source/include/semphr.h: 
 ../utils/cpu_usage.h: 
 ../inc/hw_adc.h: 
+../FreeRTOS/source/include/event_groups.h: 
+../FreeRTOS/source/include/timers.h: 
 ../drivers/rgb.h: 
 ../usb_dev_serial.h: 
 ../protocol.h: 

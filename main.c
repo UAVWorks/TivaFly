@@ -20,6 +20,7 @@
 #include "semphr.h"
 #include "utils/cpu_usage.h"
 #include "inc/hw_adc.h"
+#include "FreeRTOS/source/include/event_groups.h"
 
 #include "drivers/rgb.h"
 #include "usb_dev_serial.h"
@@ -47,14 +48,18 @@ SemaphoreHandle_t EjesSemaphore;
 TaskHandle_t sensorTaskHandle = NULL;
 TaskHandle_t consumoTaskHandle = NULL;
 
+
 extern void vUARTTask( void *pvParameters );
 
 int16_t ejes[3];
 uint32_t  velocidad=60;
-double combustible=100;
+double combustible=50;
 uint32_t hora=0;
 double  altitud=3000;
+
 uint32_t color[3];
+
+
 
 //*****************************************************************************
 //
@@ -135,35 +140,44 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 	unsigned char frame[MAX_FRAME_SIZE];
 	int num_datos;
 
+
 	while(1)
 	{
 		vTaskDelay(configTICK_RATE_HZ);
 
-		xSemaphoreTake( EjesSemaphore, portMAX_DELAY );
-		altitud += sin((ejes[PITCH]*3.14)/180) *(velocidad*(1000/60)); //pasar a de minutos a horas y km a m
-		xSemaphoreGive(EjesSemaphore);
+		if(altitud>0){
 
-		num_datos=create_frame(frame, COMANDO_HIGH, &altitud, sizeof(altitud), MAX_FRAME_SIZE);
-		if (num_datos>=0){
-			send_frame(frame, num_datos);
-		}
+			xSemaphoreTake(EjesSemaphore, portMAX_DELAY);
+			altitud += sin((ejes[PITCH]*3.14f)/180) *(velocidad*(1000/60)); //pasar a de minutos a horas y km a m
+			xSemaphoreGive(EjesSemaphore);
 
-		if(combustible==0){
-			color[BLUE]=0xFFFF;
-			if(altitud<=800){
-				color[RED]=0xFFFF;
+			num_datos=create_frame(frame, COMANDO_HIGH, &altitud, sizeof(altitud), MAX_FRAME_SIZE);
+			if (num_datos>=0){
+				send_frame(frame, num_datos);
 			}
-			RGBColorSet(color);
-			RGBBlinkRateSet(1000/altitud);
-		}
 
+			if(combustible==0){
+				color[BLUE]=0xFFFF;
+				if(altitud<=800){
+					color[RED]=0xFFFF;
+					color[GREEN]=0x0;
+				}
+				RGBColorSet(color);
+				if(altitud<=1000){
+					//RGBBlinkRateSet((float)(1000/(altitud+1)));
+				}
+				velocidad+=10;
+			}
 
-		if(altitud<=0){
-			//ENVIAR COMANDO COLISION
-
+		}else{
 			//BLOQUEAR TIVA
-
+			velocidad=0;
+			altitud=0;
+			if(combustible!=0) ADCSequenceDisable(ADC0_BASE,0);
 		}
+
+
+
 
 	}
 }
@@ -177,30 +191,30 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 	unsigned char frame[MAX_FRAME_SIZE];
 	int num_datos;
 
+
 	//
 	// Bucle infinito, las tareas en FreeRTOS no pueden "acabar", deben "matarse" con la funcion xTaskDelete().
 	//
 	while(1)
 	{
 		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
-		xSemaphoreTake( EjesSemaphore, portMAX_DELAY );
+
 		ejes[PITCH]=(potenciometros[PITCH]*90)/4095-45;
 		ejes[ROLL]=(potenciometros[ROLL]*60)/4095-30;
 		ejes[YAW]=(potenciometros[YAW]*360)/4095;
+
 
 		if(ejes[PITCH]!=lastEjes[PITCH] || ejes[ROLL]!=lastEjes[ROLL] || ejes[YAW]!=lastEjes[YAW]){
 			num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 			send_frame(frame, num_datos);
 			}
-			//UARTprintf("Valores: %i %i \n ",ejes[PITCH], ejes[ROLL]);
 			lastEjes[PITCH]=ejes[PITCH];
 			lastEjes[ROLL]=ejes[ROLL];
 			lastEjes[YAW]=ejes[YAW];
 		}
-		xSemaphoreGive(EjesSemaphore);
-
 	}
+
 }
 
 static portTASK_FUNCTION(TimeTask,pvParameters)
@@ -218,9 +232,7 @@ static portTASK_FUNCTION(TimeTask,pvParameters)
 			send_frame(frame, num_datos);
 		}
 
-		if(combustible==0){
-			velocidad+=9.8/(60*1000);
-		}
+
 
 	}
 }
@@ -230,70 +242,54 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 
 	double consumo=0.0374*exp(0.02*((velocidad*100)/240));
 
-	color[GREEN]=0x0;
-	color[BLUE]=0x0;
-	color[RED]=0x0;
+
 	TickType_t tiempo_ant =xTaskGetTickCount(  );
-	TickType_t tiempo_ant_combustible =xTaskGetTickCount(  );
+
 
 	unsigned char frame[MAX_FRAME_SIZE];
 	int num_datos;
 
 	while(1)
 	{
-		if(combustible>0){
-			if( xQueueReceive(velocidadQueue,&velocidad, ( TickType_t ) configTICK_RATE_HZ) )
-			{
-				//Con cada cambio de velocidad
-				color[BLUE]=0xFFFF;
-				RGBSet(color,((float)velocidad)/241);
-				//consumo=0.0374*exp(0.02*((velocidad*100)/240));
-				consumo=50;
-				tiempo_ant =xTaskGetTickCount();
-			}
 
-				if((xTaskGetTickCount()-tiempo_ant_combustible)>=configTICK_RATE_HZ*60 && combustible>0){
-					//Cada 60 seg Reales- 1 hora simulada
-					if(combustible >0){
-						combustible -= (((xTaskGetTickCount()-tiempo_ant)/configTICK_RATE_HZ)/60)*consumo;
-						tiempo_ant =xTaskGetTickCount();
-					}
-					num_datos=create_frame(frame, COMANDO_FUEL, &combustible, sizeof(combustible), MAX_FRAME_SIZE);
-					if (num_datos>=0){
-						send_frame(frame, num_datos);
-					}
-					tiempo_ant_combustible =xTaskGetTickCount();
-				}
+		if(xQueueReceive(velocidadQueue,&velocidad, configTICK_RATE_HZ)){
+			color[BLUE]=0xFFFF;
+			RGBSet(color,((float)velocidad)/241);
+		}
 
-
-
-			if(combustible <=0){
-				combustible=0;
-				num_datos=create_frame(frame, COMANDO_FUEL, &combustible, sizeof(combustible), MAX_FRAME_SIZE);
-				if (num_datos>=0){
-					send_frame(frame, num_datos);
-				}
-
-				velocidad=0;
-				RGBColorSet(color);
-				vTaskDelete(sensorTaskHandle);
-			}
+		if((xTaskGetTickCount(  )-tiempo_ant)>=configTICK_RATE_HZ*60 && combustible!=0){
+			//combustible -= 0.0374*exp(0.02*(velocidad*100/240)) ;
+			combustible -= 50 ;
 			if(combustible<=20){
 				color[GREEN]=0xFFFF;
 				RGBColorSet(color);
 			}
-		}else{
-			vTaskDelay(configTICK_RATE_HZ);
-			if(ejes[PITCH]>-45){
-				ejes[PITCH]--;
-				num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
-				if (num_datos>=0){
-					send_frame(frame, num_datos);
-				}
-			}else{
-				vTaskDelete(NULL);
+
+			if(combustible<=0){
+				combustible=0;
+				//velocidad=0;
+				ADCSequenceDisable(ADC0_BASE,0);
+
+			}
+
+
+			num_datos=create_frame(frame, COMANDO_FUEL, &combustible, sizeof(combustible), MAX_FRAME_SIZE);
+			if (num_datos>=0){
+				send_frame(frame, num_datos);
+			}
+			tiempo_ant =xTaskGetTickCount(  );
+		}
+
+		xSemaphoreTake(EjesSemaphore, portMAX_DELAY);
+		if(ejes[PITCH]>-45 && combustible==0 && altitud>0){
+
+			ejes[PITCH]--;
+			num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
+			if (num_datos>=0){
+				send_frame(frame, num_datos);
 			}
 		}
+		xSemaphoreGive(EjesSemaphore);
 
 
 	}
@@ -473,6 +469,12 @@ void confTimer();
 int main(void)
 {
 
+
+	color[0]=0x0;
+	color[1]=0x0;
+	color[2]=0x0;
+
+
 	confSys();
 	confUART();
 	confGPIO();
@@ -554,12 +556,15 @@ void confGPIO(){
 	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_GPIOE);
 
 
+
 	//Inicializa los LEDs usando libreria RGB --> usa Timers 0 y 1 (eliminar si no se usa finalmente)
 	RGBInit(1);
 	SysCtlPeripheralSleepEnable(GREEN_TIMER_PERIPH);
 	SysCtlPeripheralSleepEnable(BLUE_TIMER_PERIPH);
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
 	RGBEnable();
-	//SysCtlPeripheralSleepEnable(RED_TIMER_PERIPH);	//Redundante porque BLUE_TIMER_PERIPH y GREEN_TIMER_PERIPH son el mismo
+
 
 }
 void confTasks(){
@@ -619,18 +624,18 @@ void confTimer(){
 	// Configuracion TIMER0
 	// Habilita periferico Timer0
 
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER2);
-	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER2);
-	TimerControlStall(TIMER2_BASE,TIMER_A,true);
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER5);
+	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER5);
+	TimerControlStall(TIMER5_BASE,TIMER_A,true);
 	// Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
-	TimerConfigure(TIMER2_BASE, TIMER_CFG_PERIODIC);
+	TimerConfigure(TIMER5_BASE, TIMER_CFG_PERIODIC);
 	uint32_t ui32Period = SysCtlClockGet() *0.1;
 	// Carga la cuenta en el Timer0A
-	TimerLoadSet(TIMER2_BASE, TIMER_A, ui32Period -1);
+	TimerLoadSet(TIMER5_BASE, TIMER_A, ui32Period -1);
 	//Configuramos el Timer como el TRIGGER del ADC
-	TimerControlTrigger(TIMER2_BASE,TIMER_A,true);
+	TimerControlTrigger(TIMER5_BASE,TIMER_A,true);
 	// Activa el Timer0A (empezara a funcionar)
-	TimerEnable(TIMER2_BASE, TIMER_A);
+	TimerEnable(TIMER5_BASE, TIMER_A);
 }
 
 void confQueue(){
@@ -643,21 +648,16 @@ void confQueue(){
 void ADCIntHandler(){
 
 	ADCIntClear(ADC0_BASE, 0); // Limpia el flag de interrupcion del ADC
-
 	uint32_t potenciometros[3];
 	BaseType_t xHigherPriorityTaskWoken;
 	xHigherPriorityTaskWoken = pdFALSE;
-
-
-
-	// Tras haber finalizado la conversion, leemos los datos del secuenciador
-
+	// leemos los datos del secuenciador
 	 ADCSequenceDataGet(ADC0_BASE, 0, potenciometros);
 
 	 //Enviamos el dato a la tarea
 	 xQueueSendFromISR( potQueue,potenciometros,&xHigherPriorityTaskWoken);
-
 	 if(xHigherPriorityTaskWoken == pdTRUE){
 		 vPortYieldFromISR();
 	 }
+
 }
