@@ -1,12 +1,12 @@
 # FIXED
 
 usb_serial_structs.obj: ../usb_serial_structs.c
-usb_serial_structs.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/stdint.h
-usb_serial_structs.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/stdbool.h
-usb_serial_structs.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/yvals.h
-usb_serial_structs.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/stdarg.h
-usb_serial_structs.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/linkage.h
-usb_serial_structs.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/_lock.h
+usb_serial_structs.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdint.h
+usb_serial_structs.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdbool.h
+usb_serial_structs.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/yvals.h
+usb_serial_structs.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdarg.h
+usb_serial_structs.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/linkage.h
+usb_serial_structs.obj: /opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/_lock.h
 usb_serial_structs.obj: ../inc/hw_types.h
 usb_serial_structs.obj: ../driverlib/usb.h
 usb_serial_structs.obj: ../usblib/usblib.h
@@ -18,12 +18,12 @@ usb_serial_structs.obj: ../usblib/device/usbdcdc.h
 usb_serial_structs.obj: ../usb_serial_structs.h
 
 ../usb_serial_structs.c: 
-C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/stdint.h: 
-C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/stdbool.h: 
-C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/yvals.h: 
-C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/stdarg.h: 
-C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/linkage.h: 
-C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.2/include/_lock.h: 
+/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdint.h: 
+/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdbool.h: 
+/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/yvals.h: 
+/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/stdarg.h: 
+/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/linkage.h: 
+/opt/ti/ccsv6/tools/compiler/arm_5.1.10/include/_lock.h: 
 ../inc/hw_types.h: 
 ../driverlib/usb.h: 
 ../usblib/usblib.h: 

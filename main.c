@@ -42,6 +42,7 @@ uint32_t g_ulSystemClock;
 QueueHandle_t potQueue;
 QueueHandle_t velocidadQueue;
 SemaphoreHandle_t SendSemaphore;
+SemaphoreHandle_t EjesSemaphore;
 
 TaskHandle_t sensorTaskHandle = NULL;
 TaskHandle_t consumoTaskHandle = NULL;
@@ -51,6 +52,8 @@ extern void vUARTTask( void *pvParameters );
 int16_t ejes[3];
 uint32_t  velocidad=60;
 uint32_t combustible=100;
+uint32_t hora=0;
+uint32_t altitud=3000;
 
 //*****************************************************************************
 //
@@ -125,6 +128,27 @@ void vApplicationMallocFailedHook (void)
 extern void vUARTTask( void *pvParameters );
 
 
+static portTASK_FUNCTION(HighTask,pvParameters)
+{
+
+	unsigned char frame[MAX_FRAME_SIZE];
+	int num_datos;
+
+	while(1)
+	{
+		vTaskDelay(configTICK_RATE_HZ);
+
+		xSemaphoreTake( EjesSemaphore, portMAX_DELAY );
+		altitud += sin((ejes[PITCH]*3.14)/180)*velocidad*60;
+		xSemaphoreGive(EjesSemaphore);
+
+		num_datos=create_frame(frame, COMANDO_HIGH, altitud, sizeof(altitud), MAX_FRAME_SIZE);
+		if (num_datos>=0){
+			send_frame(frame, num_datos);
+		}
+
+	}
+}
 
 static portTASK_FUNCTION(SensorTask,pvParameters)
 		{
@@ -141,10 +165,10 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 	while(1)
 	{
 		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
-
-		ejes[PITCH]=(potenciometros[PITCH]*90)/4096-45;
-		ejes[ROLL]=(potenciometros[ROLL]*60)/4096-30;
-		ejes[YAW]=(potenciometros[YAW]*360)/4096;
+		xSemaphoreTake( EjesSemaphore, portMAX_DELAY );
+		ejes[PITCH]=(potenciometros[PITCH]*90)/4095-45;
+		ejes[ROLL]=(potenciometros[ROLL]*60)/4095-30;
+		ejes[YAW]=(potenciometros[YAW]*360)/4095;
 
 		if(ejes[PITCH]!=lastEjes[PITCH] || ejes[ROLL]!=lastEjes[ROLL] || ejes[YAW]!=lastEjes[YAW]){
 			num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
@@ -156,6 +180,25 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 			lastEjes[ROLL]=ejes[ROLL];
 			lastEjes[YAW]=ejes[YAW];
 		}
+		xSemaphoreGive(EjesSemaphore);
+
+	}
+}
+
+static portTASK_FUNCTION(TimeTask,pvParameters)
+{
+	unsigned char frame[MAX_FRAME_SIZE];
+	int num_datos;
+
+	while(1)
+	{
+		vTaskDelay(configTICK_RATE_HZ);
+		hora++;
+
+		num_datos=create_frame(frame, COMANDO_TIME, NULL, 0, MAX_FRAME_SIZE);
+		if (num_datos>=0){
+			send_frame(frame, num_datos);
+		}
 
 	}
 }
@@ -163,11 +206,10 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 static portTASK_FUNCTION(ConsumoTask,pvParameters)
 {
 
-
 	double consumo=0;
 	uint32_t color[3];
 	color[GREEN]=0x0;
-	color[BLUE]=0xFFFF;
+	color[BLUE]=0x0;
 	color[RED]=0x0;
 	TickType_t tiempo_ant =xTaskGetTickCount(  );
 	TickType_t tiempo_ant_combustible =xTaskGetTickCount(  );
@@ -181,6 +223,7 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 			if( xQueueReceive(velocidadQueue,&velocidad, ( TickType_t ) configTICK_RATE_HZ) )
 			{
 				//Con cada cambio de velocidad
+				color[BLUE]=0xFFFF;
 				RGBSet(color,((float)velocidad)/241);
 				consumo=0.0374*exp(0.02*((velocidad*100)/240));
 				tiempo_ant =xTaskGetTickCount();
@@ -188,7 +231,7 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 				if((xTaskGetTickCount()-tiempo_ant_combustible)>=configTICK_RATE_HZ*60 && combustible>0){
 					//Cada 60 seg Reales- 1 hora simulada
 					if(combustible >0){
-						combustible -= ((xTaskGetTickCount()-tiempo_ant)/configTICK_RATE_HZ)*consumo;
+						combustible -= (((xTaskGetTickCount()-tiempo_ant)/configTICK_RATE_HZ)/60)*consumo;
 						tiempo_ant =xTaskGetTickCount();
 					}
 					num_datos=create_frame(frame, COMANDO_FUEL, &combustible, sizeof(combustible), MAX_FRAME_SIZE);
@@ -207,8 +250,13 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 					send_frame(frame, num_datos);
 				}
 
-
-				//vTaskDelete(sensorTaskHandle);
+				velocidad=0;
+				RGBColorSet(color);
+				vTaskDelete(sensorTaskHandle);
+			}
+			if(combustible<=20){
+				color[GREEN]=0xFFFF;
+				RGBColorSet(color);
 			}
 		}else{
 			vTaskDelay(configTICK_RATE_HZ);
@@ -222,6 +270,8 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 				vTaskDelete(NULL);
 			}
 		}
+
+
 	}
 }
 
@@ -293,13 +343,20 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 					UARTprintf("Comando START\n ");
 					if(sensorTaskHandle == NULL){
 
-					sensorTaskHandle =xTaskCreate(SensorTask, (signed portCHAR *)"Sensor", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, NULL);
-					consumoTaskHandle =xTaskCreate(ConsumoTask, (signed portCHAR *)"Consumo", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, NULL);
 
-					}
-					if((sensorTaskHandle != pdTRUE))
-					{
-						while(1);
+						if((xTaskCreate(ConsumoTask, (signed portCHAR *)"Consumo", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &consumoTaskHandle)!= pdTRUE))
+						{
+							while(1);
+						}
+
+						if((xTaskCreate(SensorTask, (signed portCHAR *)"Sensor", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &sensorTaskHandle) != pdTRUE))
+						{
+							while(1);
+						}
+						if((xTaskCreate(HighTask, (signed portCHAR *)"Altitud", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &sensorTaskHandle) != pdTRUE))
+						{
+							while(1);
+						}
 					}
 
 				}
@@ -309,11 +366,11 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 
 					UARTprintf("Comando STOP\n ");
 
-
-					//vTaskDelete(sensorTaskHandle);
+					if(combustible>0){
+					vTaskDelete(sensorTaskHandle);
 					vTaskDelete( consumoTaskHandle );
-					sensorTaskHandle=NULL;
-					consumoTaskHandle=NULL;
+					}
+
 				}
 				break;
 				case COMANDO_SPEED:         // Comando de ejemplo: eliminar en la aplicacion final
@@ -327,6 +384,19 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 					extract_packet_command_param(frame,sizeof(velocidad),&velocidad);
 					xQueueSend( velocidadQueue,&velocidad,portMAX_DELAY);
 
+
+				}
+				break;
+				case COMANDO_TIME:
+				{
+
+					UARTprintf("Comando TIME\n ");
+
+					extract_packet_command_param(frame,sizeof(hora),&hora);
+					if(xTaskCreate(TimeTask, (portCHAR *)"Time",512, NULL, tskIDLE_PRIORITY + 1, NULL) != pdTRUE)
+					{
+						while(1);
+					}
 
 				}
 				break;
@@ -387,6 +457,7 @@ int main(void)
 
 
 	SendSemaphore = xSemaphoreCreateMutex();
+	EjesSemaphore =	 xSemaphoreCreateMutex();
 
 	//
 	// Mensaje de bienvenida inicial.
@@ -486,6 +557,8 @@ void confTasks(){
 
 
 
+
+
 }
 
 void confADC(){
@@ -509,7 +582,7 @@ void confADC(){
 	IntPrioritySet(INT_ADC0SS0,5<<5);
 	// Tras configurar el secuenciador, se vuelve a habilitar
 	ADCSequenceEnable(ADC0_BASE, 0);
-	//Asociamos la funciï¿½n a la interrupción
+	//Asociamos la funciï¿½n a la interrupciï¿½n
 	ADCIntRegister(ADC0_BASE, 0,ADCIntHandler);
 
 	//Activamos las interrupciones

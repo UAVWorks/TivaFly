@@ -49,7 +49,9 @@ typedef enum {
 	COMANDO_STOP,
 	COMANDO_EJES,
 	COMANDO_SPEED,
-	COMANDO_FUEL
+	COMANDO_FUEL,
+	COMANDO_TIME,
+	COMANDO_HIGH
 	//etc, etc...
 } commandTypes;
 
