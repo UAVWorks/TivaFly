@@ -42,11 +42,13 @@ uint32_t g_ulSystemClock;
 
 QueueHandle_t potQueue;
 QueueHandle_t velocidadQueue;
-SemaphoreHandle_t SendSemaphore;
-SemaphoreHandle_t EjesSemaphore;
+SemaphoreHandle_t SendSemaphore=NULL;
+SemaphoreHandle_t EjesSemaphore=NULL;
+SemaphoreHandle_t  PilotoQuitarSemaphore= NULL;
 
 TaskHandle_t sensorTaskHandle = NULL;
 TaskHandle_t consumoTaskHandle = NULL;
+TaskHandle_t PilautTaskHandle = NULL;
 
 
 extern void vUARTTask( void *pvParameters );
@@ -58,6 +60,8 @@ uint32_t hora=0;
 double  altitud=3000;
 
 uint32_t color[3];
+
+bool pilotoAutomatico=true;
 
 
 
@@ -132,6 +136,58 @@ void vApplicationMallocFailedHook (void)
 // del terminal serie (puTTY)
 //Aqui solo la declaramos para poderla referenciar en la funcion main
 extern void vUARTTask( void *pvParameters );
+
+
+
+static portTASK_FUNCTION(PilAuto,pvParameters)
+{
+
+	unsigned char frame[MAX_FRAME_SIZE];
+	int num_datos;
+
+
+	ADCSequenceDisable(ADC0_BASE,0);
+
+
+	num_datos=create_frame(frame, COMANDO_AUTOMATICO, &pilotoAutomatico, sizeof(pilotoAutomatico), MAX_FRAME_SIZE);
+	if (num_datos>=0){
+		send_frame(frame, num_datos);
+	}
+
+
+
+	while(1)
+	{
+		vTaskDelay(configTICK_RATE_HZ);
+
+		if(!pilotoAutomatico){
+			num_datos=create_frame(frame, COMANDO_AUTOMATICO, &pilotoAutomatico, sizeof(pilotoAutomatico), MAX_FRAME_SIZE);
+			if (num_datos>=0){
+				send_frame(frame, num_datos);
+			}
+			ADCSequenceEnable(ADC0_BASE,0);
+			vTaskDelete(NULL);
+		}
+
+		xSemaphoreTake(EjesSemaphore, portMAX_DELAY);
+		ejes[PITCH]=0;
+		ejes[ROLL]=0;
+		ejes[YAW]=0;
+		velocidad=100;
+		num_datos=create_frame(frame, COMANDO_EJES, &ejes, sizeof(ejes), MAX_FRAME_SIZE);
+			if (num_datos>=0){
+				send_frame(frame, num_datos);
+			}
+		num_datos=create_frame(frame, COMANDO_SPEED, &velocidad, sizeof(velocidad), MAX_FRAME_SIZE);
+			if (num_datos>=0){
+				send_frame(frame, num_datos);
+			}
+		xSemaphoreGive(EjesSemaphore);
+
+
+	}
+}
+
 
 
 static portTASK_FUNCTION(HighTask,pvParameters)
@@ -265,8 +321,8 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 		}
 
 		if((xTaskGetTickCount(  )-tiempo_ant)>=configTICK_RATE_HZ*60 && combustible!=0){
-				combustible -=50;
-			//combustible -= 0.5*exp(0.02*(velocidad*100/240)) ;
+
+			combustible -= 0.5*exp(0.02*(velocidad*100/240)) ;
 			if(combustible<=20){
 				color[GREEN]=0xFFFF;
 				RGBColorSet(color);
@@ -383,6 +439,9 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 						{
 							while(1);
 						}
+
+
+
 					}
 
 				}
@@ -465,6 +524,7 @@ void confTasks();
 void confQueue();
 void confADC();
 void confTimer();
+void ButtonHandler();
 
 
 //*****************************************************************************
@@ -490,6 +550,7 @@ int main(void)
 
 	SendSemaphore = xSemaphoreCreateMutex();
 	EjesSemaphore =	 xSemaphoreCreateMutex();
+
 
 	//
 	// Mensaje de bienvenida inicial.
@@ -568,6 +629,15 @@ void confGPIO(){
 	SysCtlPeripheralSleepEnable(GREEN_TIMER_PERIPH);
 	SysCtlPeripheralSleepEnable(BLUE_TIMER_PERIPH);
 	RGBEnable();
+
+
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+	ButtonsInit();
+	GPIOIntClear(GPIO_PORTF_BASE, GPIO_INT_PIN_0|GPIO_INT_PIN_4);
+	GPIOIntRegister(GPIO_PORTF_BASE,ButtonHandler);
+	GPIOIntTypeSet(GPIO_PORTF_BASE,GPIO_INT_PIN_0|GPIO_INT_PIN_4, GPIO_RISING_EDGE);
+	GPIOIntEnable(GPIO_PORTF_BASE, GPIO_INT_PIN_0|GPIO_INT_PIN_4);
+	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_GPIOF);
 
 
 }
@@ -660,4 +730,24 @@ void ADCIntHandler(){
 		 vPortYieldFromISR();
 	 }
 
+}
+
+void ButtonHandler(){
+	uint32_t mask=GPIOIntStatus(GPIO_PORTF_BASE,false);
+
+	if(mask & GPIO_PIN_4){
+		//Boton izquierdo
+		if((xTaskCreate(PilAuto, (signed portCHAR *)"Piloto Auto", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &PilautTaskHandle) != pdTRUE))
+		{
+			while(1);
+		}
+		pilotoAutomatico=true;
+	}
+
+	if(mask & GPIO_PIN_0){
+		//boton derecho
+		pilotoAutomatico=false;
+	}
+
+	GPIOIntClear(GPIO_PORTF_BASE,GPIO_PIN_0|GPIO_PIN_4);
 }
