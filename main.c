@@ -192,6 +192,44 @@ static portTASK_FUNCTION(PilAuto,pvParameters)
 	}
 }
 
+static portTASK_FUNCTION(turbulenciasTask,pvParameters)
+{
+
+	unsigned char frame[MAX_FRAME_SIZE];
+	int num_datos;
+	int parametro=0;
+	int variacion=0;
+
+
+	while(1)
+	{
+		vTaskDelay(configTICK_RATE_HZ*(rand()%4+1));
+
+		parametro=rand()%3;
+		variacion=rand()%10-5;
+
+
+		switch(parametro){
+			case PITCH:
+				ejes[PITCH]+= 45*variacion/100;
+				break;
+			case ROLL:
+				ejes[ROLL]+= 30*variacion/100;
+				break;
+			case YAW:
+				ejes[YAW]+= 360*variacion/100;
+				break;
+		}
+
+		num_datos=create_frame(frame, COMANDO_EJES, &ejes, sizeof(ejes), MAX_FRAME_SIZE);
+		if (num_datos>=0){
+			send_frame(frame, num_datos);
+		}
+
+
+	}
+}
+
 
 
 static portTASK_FUNCTION(HighTask,pvParameters)
@@ -520,6 +558,10 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 							while(1);
 						}
 
+						if((xTaskCreate(turbulenciasTask, (signed portCHAR *)"Turbulencias", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, NULL) != pdTRUE))
+						{
+							while(1);
+						}
 					}
 
 				}
@@ -607,6 +649,7 @@ void confQueue();
 void confADC();
 void confTimer();
 void ButtonHandler();
+void timerBotonHandler();
 
 
 //*****************************************************************************
@@ -719,7 +762,7 @@ void confGPIO(){
 	ButtonsInit();
 	GPIOIntClear(GPIO_PORTF_BASE, GPIO_INT_PIN_0|GPIO_INT_PIN_4);
 	GPIOIntRegister(GPIO_PORTF_BASE,ButtonHandler);
-	GPIOIntTypeSet(GPIO_PORTF_BASE,GPIO_INT_PIN_0|GPIO_INT_PIN_4, GPIO_RISING_EDGE);
+	GPIOIntTypeSet(GPIO_PORTF_BASE,GPIO_INT_PIN_0|GPIO_INT_PIN_4, GPIO_BOTH_EDGES);
 	GPIOIntEnable(GPIO_PORTF_BASE, GPIO_INT_PIN_0|GPIO_INT_PIN_4);
 	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_GPIOF);
 
@@ -790,6 +833,18 @@ void confTimer(){
 	TimerControlTrigger(TIMER2_BASE,TIMER_A,true);
 	// Activa el Timer0A (empezara a funcionar)
 	TimerEnable(TIMER2_BASE, TIMER_A);
+
+
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
+	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER4);
+	TimerControlStall(TIMER4_BASE,TIMER_A,true);
+	// Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
+	TimerConfigure(TIMER4_BASE, TIMER_CFG_ONE_SHOT);
+	 ui32Period = SysCtlClockGet() *2;
+	// Carga la cuenta en el Timer0A
+	TimerLoadSet(TIMER2_BASE, TIMER_A, ui32Period -1);
+	TimerIntRegister(TIMER4_BASE,TIMER_A,timerBotonHandler);
+
 }
 
 void confQueue(){
@@ -819,13 +874,32 @@ void ADCIntHandler(){
 void ButtonHandler(){
 	uint32_t mask=GPIOIntStatus(GPIO_PORTF_BASE,false);
 
+	uint8_t value=0;
+
+
 	if(mask & GPIO_PIN_4){
 		//Boton izquierdo
-		if((xTaskCreate(PilAuto, (signed portCHAR *)"Piloto Auto", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &PilautTaskHandle) != pdTRUE))
-		{
-			while(1);
+		value= GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_4);
+		if(value=0){
+			//boton levantado
+			if(pilotoAutomatico){
+				if((xTaskCreate(PilAuto, (signed portCHAR *)"Piloto Auto", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &PilautTaskHandle) != pdTRUE))
+				{
+					while(1);
+				}
+			}
+			TimerDisable(TIMER4_BASE, TIMER_A);
+		}else{
+			//boton pulsado
+			// Activa el Timer0A (empezara a funcionar)
+			TimerEnable(TIMER4_BASE, TIMER_A);
+			pilotoAutomatico=true;
 		}
-		pilotoAutomatico=true;
+
+
+
+
+
 	}
 
 	if(mask & GPIO_PIN_0){
@@ -834,4 +908,10 @@ void ButtonHandler(){
 	}
 
 	GPIOIntClear(GPIO_PORTF_BASE,GPIO_PIN_0|GPIO_PIN_4);
+}
+
+void timerBotonHandler(){
+	combustible=100;
+	pilotoAutomatico=false;
+	TimerIntClear(TIMER4_BASE, TIMER_A);
 }
