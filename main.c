@@ -231,7 +231,7 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 					RGBBlinkRateSet((float)(1000/(altitud+1)));
 				}
 
-				velocidad+=0.5;
+				velocidad+=9.8*(60*tiempoSim)/1000;
 				num_datos=create_frame(frame, COMANDO_SPEED, &velocidad, sizeof(velocidad), MAX_FRAME_SIZE);
 				if (num_datos>=0){
 					send_frame(frame, num_datos);
@@ -261,18 +261,78 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 		{
 
 	uint32_t potenciometros[3];
+	uint32_t lastPotenciometros[3];
 
 	int16_t lastEjes[3]={0,0,0};
+
 	unsigned char frame[MAX_FRAME_SIZE];
 	int num_datos;
+	int incrementoPITCH, incrementoROLL;
+
+	ejes[PITCH]=0;
+	ejes[ROLL]=0;
+	ejes[YAW]=0;
+	num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
+	if (num_datos>=0){
+	send_frame(frame, num_datos);
+	}
 
 	while(1)
 	{
 		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
 
-		ejes[PITCH]=(potenciometros[PITCH]*90)/4095-45;
-		ejes[ROLL]=(potenciometros[ROLL]*60)/4095-30;
-		ejes[YAW]=(potenciometros[YAW]*360)/4095;
+		/*eje[PITCH]=(potenciometros[PITCH]*90)/4096-45;
+		eje[ROLL]=(potenciometros[ROLL]*60)/4096-30;
+		eje[YAW]=(potenciometros[YAW]*360)/4096;
+
+		incrementoPITCH=eje[PITCH]-eje[PITCH];
+		incrementoROLL=eje[ROLL]-eje[ROLL];*/
+
+		if(potenciometros[PITCH]>=0 && potenciometros[PITCH]<682){
+			ejes[PITCH]-=1;
+		}else if(potenciometros[PITCH]>=585 && potenciometros[PITCH]<1170){
+			ejes[PITCH]-=2;
+		}else if(potenciometros[PITCH]>=1170 && potenciometros[PITCH]<1754){
+			ejes[PITCH]-=1;
+		}else if(potenciometros[PITCH]>=1754 && potenciometros[PITCH]<2340){
+			//SECCION CENTRAL
+
+		}else if(potenciometros[PITCH]>=2340 && potenciometros[PITCH]<2925){
+			ejes[PITCH]+=1;
+		}else if(potenciometros[PITCH]>=2925 && potenciometros[PITCH]<3510){
+			ejes[PITCH]+=2;
+		}else if(potenciometros[PITCH]>=3510 && potenciometros[PITCH]<4096){
+			ejes[PITCH]+=3;
+		}
+
+		if(potenciometros[ROLL]>=0 && potenciometros[ROLL]<682){
+			ejes[ROLL]-=5;
+		}else if(potenciometros[ROLL]>=585 && potenciometros[ROLL]<1170){
+			ejes[ROLL]-=3;
+		}else if(potenciometros[ROLL]>=1170 && potenciometros[ROLL]<1754){
+			ejes[ROLL]-=1;
+		}else if(potenciometros[ROLL]>=1754 && potenciometros[ROLL]<2340){
+			//SECCION CENTRAL
+
+		}else if(potenciometros[ROLL]>=2340 && potenciometros[ROLL]<2925){
+			ejes[ROLL]+=1;
+		}else if(potenciometros[ROLL]>=2925 && potenciometros[ROLL]<3510){
+			ejes[ROLL]+=3;
+		}else if(potenciometros[ROLL]>=3510 && potenciometros[ROLL]<4096){
+			ejes[ROLL]+=5;
+		}
+
+		if (ejes[PITCH]>45){
+			ejes[PITCH]=45;
+		}else if (ejes[PITCH]<-45){
+			ejes[PITCH]=-45;
+		}
+
+		if (ejes[ROLL]>30){
+			ejes[ROLL]=30;
+		}else if (ejes[ROLL]<-30){
+			ejes[ROLL]=-30;
+		}
 
 
 		if(ejes[PITCH]!=lastEjes[PITCH] || ejes[ROLL]!=lastEjes[ROLL] || ejes[YAW]!=lastEjes[YAW]){
@@ -342,6 +402,7 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 			if(combustible<=0){
 				combustible=0;
 				velocidad=0;
+				pilotoAutomatico=false;
 				ADCSequenceDisable(ADC0_BASE,0);
 
 			}
@@ -458,8 +519,6 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 						{
 							while(1);
 						}
-
-
 
 					}
 
