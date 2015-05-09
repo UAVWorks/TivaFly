@@ -62,6 +62,7 @@ extern void GPIOFIntHandler(void);
 extern void ADCIntHandler(void);
 extern void UARTStdioIntHandler(void);
 extern void USB0DeviceIntHandler(void);
+extern void RGBBlinkIntHandler(void);
 //*****************************************************************************
 //
 // The vector table.  Note that the proper constructs must be placed on this to
@@ -193,8 +194,8 @@ void (* const g_pfnVectors[])(void) =
     IntDefaultHandler,                      // Wide Timer 3 subtimer B
     IntDefaultHandler,                      // Wide Timer 4 subtimer A
     IntDefaultHandler,                      // Wide Timer 4 subtimer B
-    IntDefaultHandler,                      // Wide Timer 5 subtimer A
-    IntDefaultHandler,                      // Wide Timer 5 subtimer B
+	IntDefaultHandler,                     // Wide Timer 5 subtimer A
+	RGBBlinkIntHandler,                      // Wide Timer 5 subtimer B
     IntDefaultHandler,                      // FPU
     0,                                      // Reserved
     0,                                      // Reserved

@@ -52,8 +52,8 @@ TaskHandle_t consumoTaskHandle = NULL;
 extern void vUARTTask( void *pvParameters );
 
 int16_t ejes[3];
-uint32_t  velocidad=60;
-double combustible=50;
+float  velocidad=60;
+double combustible=100;
 uint32_t hora=0;
 double  altitud=3000;
 
@@ -163,10 +163,15 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 					color[GREEN]=0x0;
 				}
 				RGBColorSet(color);
-				if(altitud<=1000){
-					//RGBBlinkRateSet((float)(1000/(altitud+1)));
+				if(altitud<2000){
+					RGBBlinkRateSet((float)(1000/(altitud+1)));
 				}
-				velocidad+=10;
+
+				velocidad+=0.5;
+				num_datos=create_frame(frame, COMANDO_SPEED, &velocidad, sizeof(velocidad), MAX_FRAME_SIZE);
+				if (num_datos>=0){
+					send_frame(frame, num_datos);
+				}
 			}
 
 		}else{
@@ -174,6 +179,12 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 			velocidad=0;
 			altitud=0;
 			if(combustible!=0) ADCSequenceDisable(ADC0_BASE,0);
+			num_datos=create_frame(frame, COMANDO_COLISION,NULL, 0, MAX_FRAME_SIZE);
+			if (num_datos>=0){
+				send_frame(frame, num_datos);
+			}
+			vTaskSuspendAll ();
+			vTaskDelete(NULL);
 		}
 
 
@@ -191,10 +202,6 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 	unsigned char frame[MAX_FRAME_SIZE];
 	int num_datos;
 
-
-	//
-	// Bucle infinito, las tareas en FreeRTOS no pueden "acabar", deben "matarse" con la funcion xTaskDelete().
-	//
 	while(1)
 	{
 		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
@@ -258,8 +265,8 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 		}
 
 		if((xTaskGetTickCount(  )-tiempo_ant)>=configTICK_RATE_HZ*60 && combustible!=0){
-			//combustible -= 0.0374*exp(0.02*(velocidad*100/240)) ;
-			combustible -= 50 ;
+				combustible -=50;
+			//combustible -= 0.5*exp(0.02*(velocidad*100/240)) ;
 			if(combustible<=20){
 				color[GREEN]=0xFFFF;
 				RGBColorSet(color);
@@ -267,11 +274,10 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 
 			if(combustible<=0){
 				combustible=0;
-				//velocidad=0;
+				velocidad=0;
 				ADCSequenceDisable(ADC0_BASE,0);
 
 			}
-
 
 			num_datos=create_frame(frame, COMANDO_FUEL, &combustible, sizeof(combustible), MAX_FRAME_SIZE);
 			if (num_datos>=0){
@@ -561,14 +567,12 @@ void confGPIO(){
 	RGBInit(1);
 	SysCtlPeripheralSleepEnable(GREEN_TIMER_PERIPH);
 	SysCtlPeripheralSleepEnable(BLUE_TIMER_PERIPH);
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
 	RGBEnable();
 
 
 }
 void confTasks(){
-	/**                                              Creacion de tareas 												**/
+	/**Creacion de tareas **/
 
 	// Crea la tarea que gestiona los comandos UART (definida en el fichero commands.c)
 	//
@@ -583,10 +587,6 @@ void confTasks(){
 	{
 		while(1);
 	}
-
-
-
-
 
 }
 
@@ -611,7 +611,7 @@ void confADC(){
 	IntPrioritySet(INT_ADC0SS0,5<<5);
 	// Tras configurar el secuenciador, se vuelve a habilitar
 	ADCSequenceEnable(ADC0_BASE, 0);
-	//Asociamos la funci�n a la interrupci�n
+	//Asociamos la funcion a la interrupcion
 	ADCIntRegister(ADC0_BASE, 0,ADCIntHandler);
 
 	//Activamos las interrupciones
@@ -624,18 +624,18 @@ void confTimer(){
 	// Configuracion TIMER0
 	// Habilita periferico Timer0
 
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER5);
-	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER5);
-	TimerControlStall(TIMER5_BASE,TIMER_A,true);
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER2);
+	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER2);
+	TimerControlStall(TIMER2_BASE,TIMER_A,true);
 	// Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
-	TimerConfigure(TIMER5_BASE, TIMER_CFG_PERIODIC);
+	TimerConfigure(TIMER2_BASE, TIMER_CFG_PERIODIC);
 	uint32_t ui32Period = SysCtlClockGet() *0.1;
 	// Carga la cuenta en el Timer0A
-	TimerLoadSet(TIMER5_BASE, TIMER_A, ui32Period -1);
+	TimerLoadSet(TIMER2_BASE, TIMER_A, ui32Period -1);
 	//Configuramos el Timer como el TRIGGER del ADC
-	TimerControlTrigger(TIMER5_BASE,TIMER_A,true);
+	TimerControlTrigger(TIMER2_BASE,TIMER_A,true);
 	// Activa el Timer0A (empezara a funcionar)
-	TimerEnable(TIMER5_BASE, TIMER_A);
+	TimerEnable(TIMER2_BASE, TIMER_A);
 }
 
 void confQueue(){
