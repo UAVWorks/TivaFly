@@ -38,6 +38,11 @@ commands.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdarg.h
 commands.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/time.h
 commands.obj: ../utils/uartstdio.h
 commands.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdarg.h
+commands.obj: ../FreeRTOS/source/include/event_groups.h
+commands.obj: ../FreeRTOS/source/include/timers.h
+commands.obj: ../protocol.h
+commands.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdlib.h
+commands.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/string.h
 
 ../commands.c: 
 C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdbool.h: 
@@ -77,3 +82,8 @@ C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdarg.h:
 C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/time.h: 
 ../utils/uartstdio.h: 
 C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdarg.h: 
+../FreeRTOS/source/include/event_groups.h: 
+../FreeRTOS/source/include/timers.h: 
+../protocol.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdlib.h: 
+C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/string.h: 

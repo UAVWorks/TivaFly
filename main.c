@@ -50,6 +50,9 @@ TaskHandle_t sensorTaskHandle = NULL;
 TaskHandle_t consumoTaskHandle = NULL;
 TaskHandle_t PilautTaskHandle = NULL;
 
+EventGroupHandle_t xTrazaEventGroup;
+#define TrazaBit	( 1 << 0 )
+
 
 extern void vUARTTask( void *pvParameters );
 
@@ -206,6 +209,10 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 			xSemaphoreTake(EjesSemaphore, portMAX_DELAY);
 			altitud += sin((ejes[PITCH]*3.14f)/180) *(velocidad*(1000/60)); //pasar a de minutos a horas y km a m
 			xSemaphoreGive(EjesSemaphore);
+
+			if(altitud>99999){
+				altitud=99999;
+			}
 
 			num_datos=create_frame(frame, COMANDO_HIGH, &altitud, sizeof(altitud), MAX_FRAME_SIZE);
 			if (num_datos>=0){
@@ -366,6 +373,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 	int numdatos;
 	unsigned int errors=0;
 	unsigned char command;
+	EventBits_t bits;
 
 
 
@@ -389,12 +397,15 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 			{
 				//El paquete esta bien, luego procedo a tratarlo.
 				command=decode_command_type(frame,0);
-
+				bits=xEventGroupGetBits(xTrazaEventGroup);
 				switch(command)
 				{
 				case COMANDO_PING :
 
-					UARTprintf("Comando PING\n ");
+					if(bits & TrazaBit == TrazaBit){
+						UARTprintf("Comando PING\n ");
+					}
+
 					//A un comando de ping se responde con el propio comando
 					numdatos=create_frame(frame,command,0,0,MAX_FRAME_SIZE);
 					if (numdatos>=0)
@@ -422,7 +433,11 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 				case COMANDO_START:         // Comando de ejemplo: eliminar en la aplicacion final
 				{
 
-					UARTprintf("Comando START\n ");
+					if(bits & TrazaBit == TrazaBit){
+						UARTprintf("Comando START\n ");
+					}
+
+
 					if(sensorTaskHandle == NULL){
 
 
@@ -449,8 +464,9 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 				case COMANDO_STOP:         // Comando de ejemplo: eliminar en la aplicacion final
 				{
 
-					UARTprintf("Comando STOP\n ");
-
+					if(bits & TrazaBit == TrazaBit){
+						UARTprintf("Comando STOP\n ");
+					}
 					if(combustible>0){
 					vTaskDelete(sensorTaskHandle);
 					vTaskDelete( consumoTaskHandle );
@@ -461,8 +477,9 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 				case COMANDO_SPEED:         // Comando de ejemplo: eliminar en la aplicacion final
 				{
 
-					UARTprintf("Comando VEL\n ");
-
+					if(bits & TrazaBit == TrazaBit){
+						UARTprintf("Comando SPEED\n ");
+					}
 					uint32_t  velocidad;
 
 
@@ -475,7 +492,9 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 				case COMANDO_TIME:
 				{
 
-					UARTprintf("Comando TIME\n ");
+					if(bits & TrazaBit == TrazaBit){
+						UARTprintf("Comando TIME\n ");
+					}
 
 					extract_packet_command_param(frame,sizeof(hora),&hora);
 					if(xTaskCreate(TimeTask, (portCHAR *)"Time",512, NULL, tskIDLE_PRIORITY + 1, NULL) != pdTRUE)
@@ -550,6 +569,8 @@ int main(void)
 
 	SendSemaphore = xSemaphoreCreateMutex();
 	EjesSemaphore =	 xSemaphoreCreateMutex();
+
+	xTrazaEventGroup = xEventGroupCreate();
 
 
 	//

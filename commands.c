@@ -39,6 +39,9 @@
 
 #include "utils/uartstdio.h"
 
+#include "FreeRTOS/source/include/event_groups.h"
+#include "protocol.h"
+
 // ==============================================================================
 // The CPU usage in percent, in 16.16 fixed point format.
 // ==============================================================================
@@ -169,6 +172,72 @@ int Cmd_help(int argc, char *argv[])
     return(0);
 }
 
+extern EventGroupHandle_t xTrazaEventGroup;
+#define TrazaBit	( 1 << 0 )
+
+int Cmd_traza(int argc, char *argv[])
+{
+	if(argc<1){
+		UARTprintf(" traza [on|off]\n");
+		return(-1);
+	}
+
+	if (0==strncmp( argv[1], "on",2))
+	{
+		UARTprintf("Activando Traza\n");
+		xEventGroupSetBits( xTrazaEventGroup, TrazaBit );
+
+	}
+	else if (0==strncmp( argv[1], "off",3))
+	{
+		UARTprintf("Desactivando Traza\n");
+		xEventGroupClearBits( xTrazaEventGroup, TrazaBit );
+	}
+	else
+	{
+		//Si el parametro no es correcto, muestro la ayuda
+		UARTprintf(" traza [on|off]\n");
+	}
+
+    return(0);
+}
+
+int Cmd_radio(int argc, char *argv[])
+{
+	unsigned char frame[MAX_FRAME_SIZE];
+	int num_datos;
+
+	char info[40];
+	int i=0;
+	int j=1;
+	int h=0;
+	char c;
+
+	while(i<=40 && j<argc){
+		c=argv[j][h];
+		h++;
+		if(c!='\0'){
+			info[i]=c;
+
+		}else{
+			if(j!=argc-1){
+				info[i]=' ';
+			}
+			j++;
+			h=0;
+		}
+		i++;
+	}
+
+	num_datos=create_frame(frame, COMANDO_RADIO, &info, sizeof(info), MAX_FRAME_SIZE);
+	if (num_datos>=0){
+		send_frame(frame, num_datos);
+	}
+
+
+    return(0);
+}
+
 
 
 // ==============================================================================
@@ -186,6 +255,8 @@ tCmdLineEntry g_psCmdTable[] =
 #if (configGENERATE_RUN_TIME_STATS)
 	{ "stats",    Cmd_stats,      "     : Muestra estadisticas de las tareas" },
 #endif
+	{ "traza",    Cmd_traza,      "     : Muestra traza " },
+	{ "radio",    Cmd_radio,      "     : enviar info radio" },
 	    { 0, 0, 0 }
 };
 
