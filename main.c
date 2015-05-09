@@ -61,6 +61,7 @@ float  velocidad=60;
 double combustible=100;
 uint32_t hora=0;
 double  altitud=3000;
+int tiempoSim=1;
 
 uint32_t color[3];
 
@@ -207,7 +208,7 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 		if(altitud>0){
 
 			xSemaphoreTake(EjesSemaphore, portMAX_DELAY);
-			altitud += sin((ejes[PITCH]*3.14f)/180) *(velocidad*(1000/60)); //pasar a de minutos a horas y km a m
+			altitud += sin((ejes[PITCH]*3.14f)/180) *(velocidad*(1000/(60/tiempoSim))); //pasar a de minutos a horas y km a m
 			xSemaphoreGive(EjesSemaphore);
 
 			if(altitud>99999){
@@ -295,9 +296,12 @@ static portTASK_FUNCTION(TimeTask,pvParameters)
 	while(1)
 	{
 		vTaskDelay(configTICK_RATE_HZ);
-		hora++;
+		hora+=tiempoSim;
+		if(hora>1440){
+			hora=0;
+		}
 
-		num_datos=create_frame(frame, COMANDO_TIME, NULL, 0, MAX_FRAME_SIZE);
+		num_datos=create_frame(frame, COMANDO_TIME, &hora, sizeof(hora), MAX_FRAME_SIZE);
 		if (num_datos>=0){
 			send_frame(frame, num_datos);
 		}
@@ -327,7 +331,7 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 			RGBSet(color,((float)velocidad)/241);
 		}
 
-		if((xTaskGetTickCount(  )-tiempo_ant)>=configTICK_RATE_HZ*60 && combustible!=0){
+		if((xTaskGetTickCount(  )-tiempo_ant)>=configTICK_RATE_HZ*(60/tiempoSim) && combustible!=0){
 
 			combustible -= 0.5*exp(0.02*(velocidad*100/240)) ;
 			if(combustible<=20){

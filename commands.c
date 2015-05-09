@@ -222,6 +222,8 @@ int Cmd_radio(int argc, char *argv[])
 		}else{
 			if(j!=argc-1){
 				info[i]=' ';
+			}else{
+				info[i]='\0';
 			}
 			j++;
 			h=0;
@@ -238,7 +240,24 @@ int Cmd_radio(int argc, char *argv[])
     return(0);
 }
 
+extern int tiempoSim;
+int Cmd_timesim(int argc, char *argv[])
+{
+		int tiempo;
 
+		if(argc!=2){
+			UARTprintf(" tiempo [num]\n");
+			return(-1);
+		}
+
+		tiempo=atoi(argv[1]);
+		if(tiempo<=30 && tiempo>=1){
+			tiempoSim=tiempo;
+		}
+
+
+    return(0);
+}
 
 // ==============================================================================
 // Tabla con los comandos y su descripcion. Si quiero anadir alguno, debo hacerlo aqui
@@ -257,6 +276,7 @@ tCmdLineEntry g_psCmdTable[] =
 #endif
 	{ "traza",    Cmd_traza,      "     : Muestra traza " },
 	{ "radio",    Cmd_radio,      "     : enviar info radio" },
+	{ "tiempo",    Cmd_timesim,      "     : cambiar tiempo simulacion" },
 	    { 0, 0, 0 }
 };
 
