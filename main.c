@@ -169,7 +169,7 @@ static portTASK_FUNCTION(PilAuto,pvParameters)
 
 		bits=xEventGroupGetBits(xEventGroup); // Leemos los flags
 
-		if(bits & PilotoAutomaticoBit != PilotoAutomaticoBit){  //Si el flags de pilotoAutomatico esta a cero quitamos el pilotoAutomatico
+		if(bits  == 0 || bits== 1){  //Si el flags de pilotoAutomatico esta a cero quitamos el pilotoAutomatico
 			pilotoAutomatico=false;
 			num_datos=create_frame(frame, COMANDO_AUTOMATICO, &pilotoAutomatico, sizeof(pilotoAutomatico), MAX_FRAME_SIZE);
 			if (num_datos>=0){
@@ -182,6 +182,9 @@ static portTASK_FUNCTION(PilAuto,pvParameters)
 			}
 			ADCSequenceEnable(ADC0_BASE,0); // Habilitamos el ADC
 			vTaskDelete(NULL);
+			while(1){
+				//Por si falla
+			}
 		}
 
 
@@ -352,7 +355,15 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 			}
 
 
-			vTaskEndScheduler(); //Salimos del Scheduler de FreeRTOS
+
+			//BLOQUEAMOS LA TIVA
+			vTaskDelete(sensorTaskHandle);
+			vTaskDelete( consumoTaskHandle );
+			vTaskDelete(altitudTaskHandle);
+			vTaskDelete( turbulenciasTaskHandle );
+			vTaskEndScheduler(  );
+
+			while(1);
 
 		}
 
@@ -684,7 +695,6 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 					//Recibimos y enviamos por la cola la velocidad
 					extract_packet_command_param(frame,sizeof(velocidad),&velocidad);
 					xQueueSend( velocidadQueue,&velocidad,portMAX_DELAY);
-
 
 				}
 				break;
