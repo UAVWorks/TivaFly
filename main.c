@@ -170,6 +170,7 @@ static portTASK_FUNCTION(PilAuto,pvParameters)
 		bits=xEventGroupGetBits(xEventGroup); // Leemos los flags
 
 		if(bits & PilotoAutomaticoBit != PilotoAutomaticoBit){  //Si el flags de pilotoAutomatico esta a cero quitamos el pilotoAutomatico
+			pilotoAutomatico=false;
 			num_datos=create_frame(frame, COMANDO_AUTOMATICO, &pilotoAutomatico, sizeof(pilotoAutomatico), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
@@ -464,11 +465,12 @@ static portTASK_FUNCTION(TimeTask,pvParameters)
 		tiempoSim=getTiempoSim(); //Obtenemos la equivalencia de 1 segundo Real son tiempoSim minutos en el simulado
 		hora = getHora(); //Obtenemos la hora
 
-		hora+=tiempoSim;
-		if(hora>1440){
+		hora+=tiempoSim; //aumentamos hora tiempoSim (Minutos)
+		if(hora>1440){ //si llegamos a las 24:00 (1440 minutos) ponemos las 00:00
 			hora=0;
 		}
 
+		//Modificamos y enviamos la hora
 		setHora(hora);
 
 		num_datos=create_frame(frame, COMANDO_TIME, &hora, sizeof(hora), MAX_FRAME_SIZE);
@@ -486,10 +488,10 @@ static portTASK_FUNCTION(TimeTask,pvParameters)
 static portTASK_FUNCTION(ConsumoTask,pvParameters)
 {
 
-	double consumo=0.0374*exp(0.02*((velocidad*100)/240));
+	double consumo=0.0374*exp(0.02*((velocidad*100)/240)); //actualizamos el consumo
 
 
-	TickType_t tiempo_ant =xTaskGetTickCount(  );
+	TickType_t tiempo_ant =xTaskGetTickCount(  ); //obtenemos los tick transcurridos
 
 
 	unsigned char frame[MAX_FRAME_SIZE];
@@ -503,20 +505,24 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 	{
 
 		if(xQueueReceive(velocidadQueue,&velocidad, configTICK_RATE_HZ)){
+			//Si recibimos un nuevo valor de velocidad cambiamos brillo del led azul
 			color[BLUE]=0xFFFF;
 			RGBSet(color,((float)velocidad)/241);
 		}
 
 		if((xTaskGetTickCount(  )-tiempo_ant)>=configTICK_RATE_HZ*(60/tiempoSim) && combustible!=0){
+			//Cada minuto real (1 hora simulada)
 			combustible=getCombustible();
-
+			//Modificamos el combustible segun el consumo
 			combustible -= 0.5*exp(0.02*(velocidad*100/240)) ;
-			if(combustible<=20){
+
+
+			if(combustible<=20){ //Encendemos el Led Verde si el combustible es menor que 20
 				color[GREEN]=0xFFFF;
 				RGBColorSet(color);
 			}
 
-			if(combustible<=0){
+			if(combustible<=0){ //Si el combustible es cero desactivamos el ADC
 				combustible=0;
 				velocidad=0;
 				color[BLUE]=0x0;
@@ -526,6 +532,7 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 
 			}
 
+			//Enviamos el combustible
 			setCombustible(combustible);
 			num_datos=create_frame(frame, COMANDO_FUEL, &combustible, sizeof(combustible), MAX_FRAME_SIZE);
 			if (num_datos>=0){
@@ -535,13 +542,14 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 				logError(num_datos);
 
 			}
+
 			tiempo_ant =xTaskGetTickCount(  );
 		}
 
 
 		getEjes(ejes);
 		altitud=getAltitud();
-		if(ejes[PITCH]>-45 && combustible==0 && altitud>0){
+		if(ejes[PITCH]>-45 && combustible==0 && altitud>0){ //si el combustible es cero ponemos PITCH =45 poco a poco
 
 			ejes[PITCH]--;
 
@@ -655,11 +663,11 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 					if(bits & TrazaBit == TrazaBit){
 						UARTprintf("Comando STOP\n ");
 					}
-					if(combustible>0){
-					vTaskDelete(sensorTaskHandle);
-					vTaskDelete( consumoTaskHandle );
-					vTaskDelete(altitudTaskHandle);
-					vTaskDelete( turbulenciasTaskHandle );
+					if(combustible>0){ //Eliminamos las tareas en el STOP
+						vTaskDelete(sensorTaskHandle);
+						vTaskDelete( consumoTaskHandle );
+						vTaskDelete(altitudTaskHandle);
+						vTaskDelete( turbulenciasTaskHandle );
 
 					}
 
@@ -673,7 +681,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 					}
 					float  velocidad;
 
-
+					//Recibimos y enviamos por la cola la velocidad
 					extract_packet_command_param(frame,sizeof(velocidad),&velocidad);
 					xQueueSend( velocidadQueue,&velocidad,portMAX_DELAY);
 
@@ -689,9 +697,10 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 
 					uint32_t hora;
 					extract_packet_command_param(frame,sizeof(hora),&hora);
-
+					//recibimos y actualizamos el valor de Hora
 					setHora(hora);
-					if(xTaskCreate(TimeTask, (portCHAR *)"Time",512, NULL, tskIDLE_PRIORITY + 1, NULL) != pdTRUE)
+					//Creamos la tarea Time
+					if(xTaskCreate(TimeTask, (portCHAR *)"Time",LED1TASKSTACKSIZE, NULL, tskIDLE_PRIORITY + 1, NULL) != pdTRUE)
 					{
 						while(1);
 					}
@@ -715,7 +724,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 		}else{ // if (numdatos >0)
 			//Error de recepcion de trama(PROT_ERROR_RX_FRAME_TOO_LONG), ignorar el paquete
 			errors++;
-			// Procesamiento del error (TODO)
+
 		}
 	}
 }
@@ -750,7 +759,7 @@ void timerBotonHandler();
 int main(void)
 {
 
-
+	//Establecemos el color del led a apagado
 	color[0]=0x0;
 	color[1]=0x0;
 	color[2]=0x0;
@@ -763,7 +772,7 @@ int main(void)
 	confQueue();
 	confSemaphores();
 
-
+	//Creamos los flags
 	xEventGroup = xEventGroupCreate();
 	xEventGroupClearBits( xEventGroup, TrazaBit | PilotoAutomaticoBit );
 
@@ -840,13 +849,13 @@ void confGPIO(){
 
 
 
-	//Inicializa los LEDs usando libreria RGB --> usa Timers 0 y 1 (eliminar si no se usa finalmente)
+	//Inicializa los LEDs usando libreria RGB
 	RGBInit(1);
 	SysCtlPeripheralSleepEnable(GREEN_TIMER_PERIPH);
 	SysCtlPeripheralSleepEnable(BLUE_TIMER_PERIPH);
 	RGBEnable();
 
-
+	//Inicializamos los botones y su interrupción
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 	ButtonsInit();
 	GPIOIntClear(GPIO_PORTF_BASE, GPIO_INT_PIN_0|GPIO_INT_PIN_4);
@@ -858,8 +867,6 @@ void confGPIO(){
 
 }
 void confTasks(){
-	/**Creacion de tareas **/
-
 	// Crea la tarea que gestiona los comandos UART (definida en el fichero commands.c)
 	//
 	if((xTaskCreate(vUARTTask, (portCHAR *)"Uart", 512,NULL,tskIDLE_PRIORITY + 1, NULL) != pdTRUE))
@@ -908,7 +915,7 @@ void confADC(){
 
 void confTimer(){
 
-
+	//Inicializamos el TIMER2 para el ADC como Trigger a una frecuencia de 10Hz
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER2);
 	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER2);
 	TimerControlStall(TIMER2_BASE,TIMER_A,true);
@@ -918,36 +925,34 @@ void confTimer(){
 	TimerControlTrigger(TIMER2_BASE,TIMER_A,true);
 	TimerEnable(TIMER2_BASE, TIMER_A);
 
-
+	//Inicializamos el TIMER4 para la pulsación larga con un periodo de 2 segundos
   SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
   SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER4);
-  // Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
   TimerConfigure(TIMER4_BASE, TIMER_CFG_ONE_SHOT);
-  // Periodo de cuenta de 0.05s. SysCtlClockGet() te proporciona la frecuencia del reloj del sistema, por lo que una cuenta
-  // del Timer a SysCtlClockGet() tardara 1 segundo, a 0.5*SysCtlClockGet(), 0.5seg, etc...
   ui32Period = (SysCtlClockGet() *2) ;
-  // Carga la cuenta en el Timer0A
   TimerLoadSet(TIMER4_BASE, TIMER_A, ui32Period -1);
-  // Habilita interrupcion del modulo TIMER
   IntEnable(INT_TIMER4A);
   TimerIntRegister(TIMER4_BASE,TIMER_A,timerBotonHandler);
-  IntPrioritySet(INT_TIMER5A,5<<5);
-  // Y habilita, dentro del modulo TIMER0, la interrupcion de particular de "fin de cuenta"
+  IntPrioritySet(INT_TIMER4A,5<<5);
   TimerIntEnable(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
 
 }
 
 void confQueue(){
-		uint32_t potenciometros[3];
-		potQueue = xQueueCreate( 1, sizeof(potenciometros) );
 
-		velocidadQueue=xQueueCreate(1,sizeof(uint32_t));
+		//Cremoas las colas necesarias
+		uint32_t potenciometros[3];
+		potQueue = xQueueCreate( 1, sizeof(potenciometros) ); //Cola para el ADC
+
+		velocidadQueue=xQueueCreate(1,sizeof(uint32_t)); //Cola para la velocidad
 }
 
 void confSemaphores(){
-	SendSemaphore = xSemaphoreCreateMutex();
 
-	crearSemaphoresAvion();
+	//Creamos los mutex
+	SendSemaphore = xSemaphoreCreateMutex(); //mutex para el envio de comandos
+
+	crearSemaphoresAvion(); //Mutexes proteccion de variables
 }
 
 void ADCIntHandler(){
@@ -977,10 +982,9 @@ void ButtonHandler(){
 		value= GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_4);
 		if(value==0){
 			//boton pulsado
-			// Activa el Timer0A (empezara a funcionar)
+			// Activa el Timer4A (empezara a funcionar)
 			TimerEnable(TIMER4_BASE, TIMER_A);
 			pulsacionLarga=true;
-
 
 		}else{
 			TimerDisable(TIMER4_BASE,TIMER_A);
