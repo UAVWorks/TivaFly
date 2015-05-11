@@ -95,6 +95,7 @@ int create_frame(unsigned char *frame, unsigned char command_type, void * param,
 int send_frame(unsigned char *frame, int FrameSize);
 int receive_frame(unsigned char *frame, int maxFrameSize);
 int destuff_and_check_checksum(unsigned char *frame, int max_size);
+void logError();
 
 
 #endif

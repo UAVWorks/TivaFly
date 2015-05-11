@@ -17,7 +17,7 @@ void inicializarVariables(){
 	setAltitud(3000);
 	setCombustible(100);
 	setEjes(0,0,0);
-	setPilotoAutomatico(false);
+
 	setTiempoSim(1);
 	setVelocidad(60);
 

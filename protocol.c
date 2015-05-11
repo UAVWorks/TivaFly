@@ -211,7 +211,25 @@ int send_frame(unsigned char *frame, int FrameSize)
 
 
 
+void logError(int numdatos){
+	switch(numdatos){
+		case PROT_ERROR_NOMEM:
 
+				UARTprintf("Error: PROT_ERROR_NOMEM\n ");
+
+			break;
+		case PROT_ERROR_STUFFED_FRAME_TOO_LONG:
+
+				UARTprintf("Error: PROT_ERROR_STUFFED_FRAME_TOO_LONG\n ");
+
+			break;
+		case PROT_ERROR_COMMAND_TOO_LONG:
+
+				UARTprintf("Error: PROT_ERROR_COMMAND_TOO_LONG\n ");
+
+			break;
+		}
+}
 
 
 

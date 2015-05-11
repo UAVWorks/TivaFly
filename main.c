@@ -41,11 +41,15 @@ uint32_t g_ulSystemClock;
 
 QueueHandle_t potQueue;
 QueueHandle_t velocidadQueue;
+
 SemaphoreHandle_t SendSemaphore=NULL;
 
+// Punteros a las tareas
 TaskHandle_t sensorTaskHandle = NULL;
 TaskHandle_t consumoTaskHandle = NULL;
 TaskHandle_t PilautTaskHandle = NULL;
+TaskHandle_t altitudTaskHandle = NULL;
+TaskHandle_t turbulenciasTaskHandle = NULL;
 
 EventGroupHandle_t xEventGroup;
 #define TrazaBit	( 1 << 0 )
@@ -141,41 +145,63 @@ static portTASK_FUNCTION(PilAuto,pvParameters)
 	int num_datos;
 
 
+	//Desactivamos las lecturas del ADC
 	ADCSequenceDisable(ADC0_BASE,0);
+
 
 	bool pilotoAutomatico =true;
 	EventBits_t bits;
 
+	// Enviamos la trama para indicar a QT que estamos con el piloto Automatico
 	num_datos=create_frame(frame, COMANDO_AUTOMATICO, &pilotoAutomatico, sizeof(pilotoAutomatico), MAX_FRAME_SIZE);
 	if (num_datos>=0){
 		send_frame(frame, num_datos);
+	}else{
+
+		logError(num_datos);
+
 	}
 
 
 	while(1)
 	{
-		vTaskDelay(configTICK_RATE_HZ);
-		bits=xEventGroupGetBits(xEventGroup);
+		vTaskDelay(configTICK_RATE_HZ); // Esperamos 1 seg
 
-		if(bits & PilotoAutomaticoBit != PilotoAutomaticoBit){
+		bits=xEventGroupGetBits(xEventGroup); // Leemos los flags
+
+		if(bits & PilotoAutomaticoBit != PilotoAutomaticoBit){  //Si el flags de pilotoAutomatico esta a cero quitamos el pilotoAutomatico
 			num_datos=create_frame(frame, COMANDO_AUTOMATICO, &pilotoAutomatico, sizeof(pilotoAutomatico), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
+
+			}else{
+
+				logError(num_datos);
+
 			}
-			ADCSequenceEnable(ADC0_BASE,0);
+			ADCSequenceEnable(ADC0_BASE,0); // Habilitamos el ADC
 			vTaskDelete(NULL);
 		}
 
 
+		//Centramos el avion, ponemos la velocidad a 100 y lo mandamos a QT
 		setEjes(0,0,0);
 		setVelocidad(100.0f);
 		num_datos=create_frame(frame, COMANDO_EJES, &ejes, sizeof(ejes), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
+			}else{
+
+				logError(num_datos);
+
 			}
 		num_datos=create_frame(frame, COMANDO_SPEED, &velocidad, sizeof(velocidad), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
+			}else{
+
+				logError(num_datos);
+
 			}
 
 
@@ -195,10 +221,12 @@ static portTASK_FUNCTION(turbulenciasTask,pvParameters)
 
 	while(1)
 	{
-		vTaskDelay(configTICK_RATE_HZ*(rand()%4+1));
+		//Esperamos un tiempo entre 1 y 5 seg
+		vTaskDelay(configTICK_RATE_HZ*(rand()%5+1));
 
+		// Obtenemos que parametro y cuanto porcentaje vamos a variarlo
 		parametro=rand()%3;
-		variacion=rand()%10-5;
+		variacion=rand()%11-5;
 
 		getEjes(ejes);
 
@@ -210,14 +238,20 @@ static portTASK_FUNCTION(turbulenciasTask,pvParameters)
 				ejes[ROLL]+= 30*variacion/100;
 				break;
 			case YAW:
-				ejes[YAW]+= 360*variacion/100;
+				ejes[YAW]+= 180*variacion/100;
 				break;
 		}
+
+		//Enviamos los cambios
 		setEjes(ejes[PITCH], ejes[ROLL], ejes[YAW]);
 
 		num_datos=create_frame(frame, COMANDO_EJES, &ejes, sizeof(ejes), MAX_FRAME_SIZE);
 		if (num_datos>=0){
 			send_frame(frame, num_datos);
+		}else{
+
+			logError(num_datos);
+
 		}
 
 
@@ -240,29 +274,37 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 
 	while(1)
 	{
-		vTaskDelay(configTICK_RATE_HZ);
+		vTaskDelay(configTICK_RATE_HZ); //Cada seg
 
+		//Obtenemos las variables
 		altitud=getAltitud();
 		velocidad=getVelocidad();
 		tiempoSim=getTiempoSim();
-		if(altitud>0){
+
+		if(altitud>0){ //Si la altitud es mayor que cero cambiamos la altitud
 
 			getEjes(ejes);
-			altitud += sin((ejes[PITCH]*3.14f)/180) *(velocidad*(1000/(60/tiempoSim))); //pasar a de minutos a horas y km a m
+			altitud += sin((ejes[PITCH]*3.14f)/180) *(velocidad*(1000/(60/tiempoSim)));
 
-			if(altitud>99999){
+			if(altitud>99999){ //99999 es el maximo del panel QT
 				altitud=99999;
 			}
 
+			//Enviamos la trama con la altitud
 			setAltitud(altitud);
 
 			num_datos=create_frame(frame, COMANDO_HIGH, &altitud, sizeof(altitud), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
+			}else{
+
+				logError(num_datos);
+
 			}
 
+			//Obtenemos el combustible
 			combustible=getCombustible();
-			if(combustible==0){
+			if(combustible==0){//Si ya estamos sin combustible hacemos parpadear los led con la altitud
 				color[BLUE]=0xFFFF;
 				if(altitud<=800){
 					color[RED]=0xFFFF;
@@ -274,27 +316,43 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 				}
 				tiempoSim=getTiempoSim();
 
+				//Aumentamos la velocidad a 9,8m/s^2
 				velocidad+=9.8*(60*tiempoSim)/1000;
 				setVelocidad(velocidad);
+				//Enviamos la nueva velocidad
 				num_datos=create_frame(frame, COMANDO_SPEED, &velocidad, sizeof(velocidad), MAX_FRAME_SIZE);
 				if (num_datos>=0){
 					send_frame(frame, num_datos);
+				}else{
+
+					logError(num_datos);
+
 				}
 			}
 
-		}else{
-			//BLOQUEAR TIVA
+		}else{ //Si la altitud es menor o igual a 0
+
+			//Variables a cero
 			velocidad=0;
 			altitud=0;
+
 			setVelocidad(velocidad);
 			setAltitud(altitud);
+
+			//Enviamos comando colision
 			if(combustible!=0) ADCSequenceDisable(ADC0_BASE,0);
 			num_datos=create_frame(frame, COMANDO_COLISION,NULL, 0, MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
+			}else{
+
+				logError(num_datos);
+
 			}
-			vTaskSuspendAll ();
-			vTaskDelete(NULL);
+
+
+			vTaskEndScheduler(); //Salimos del Scheduler de FreeRTOS
+
 		}
 
 
@@ -317,17 +375,25 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 
 	getEjes(ejes);
 
+	// Enviamos incialmente el estado de los ejes
 	num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
 	if (num_datos>=0){
 	send_frame(frame, num_datos);
+	}else{
+
+		logError(num_datos);
+
 	}
 
 	while(1)
 	{
-		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
+		xQueueReceive(potQueue,potenciometros,portMAX_DELAY); //Esperamos a que llegue información del ADC
 
-		getEjes(ejes);
+		getEjes(ejes); //Obtenemos como están actualmente los ejes
 
+		/* Para el PITCH y ROLL los potenciometros tendran cinco zonas donde la central no modificará los ejes y
+		 * las laterales aumentaran o disminuiran los valores de uno en uno o dos en dos.
+		 */
 		if(potenciometros[PITCH]<819){
 			ejes[PITCH]-=2;
 		}else if(potenciometros[PITCH]>=819 && potenciometros[PITCH]<1638){
@@ -348,6 +414,7 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 			ejes[ROLL]+=2;
 		}
 
+		//Vemos si ha llegado al máximo
 		if (ejes[PITCH]>45){
 			ejes[PITCH]=45;
 		}else if (ejes[PITCH]<-45){
@@ -360,14 +427,20 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 			ejes[ROLL]=-30;
 		}
 
-		ejes[YAW]=(potenciometros[YAW]*360)/4095;
 
-		setEjes(ejes[PITCH], ejes[ROLL], ejes[YAW]);
+		ejes[YAW]=(potenciometros[YAW]*360)/4095; //Obtenemos el valor del yaw entre 0 y 360
+
+		setEjes(ejes[PITCH], ejes[ROLL], ejes[YAW]); //Modificamos los ejes
 
 		if(ejes[PITCH]!=lastEjes[PITCH] || ejes[ROLL]!=lastEjes[ROLL] || ejes[YAW]!=lastEjes[YAW]){
+			//Solo enviamos los ejes si se han modificado
 			num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 			send_frame(frame, num_datos);
+			}else{
+
+				logError(num_datos);
+
 			}
 			lastEjes[PITCH]=ejes[PITCH];
 			lastEjes[ROLL]=ejes[ROLL];
@@ -386,10 +459,10 @@ static portTASK_FUNCTION(TimeTask,pvParameters)
 
 	while(1)
 	{
-		vTaskDelay(configTICK_RATE_HZ);
+		vTaskDelay(configTICK_RATE_HZ); //cada segundo
 
-		tiempoSim=getTiempoSim();
-		hora = getHora();
+		tiempoSim=getTiempoSim(); //Obtenemos la equivalencia de 1 segundo Real son tiempoSim minutos en el simulado
+		hora = getHora(); //Obtenemos la hora
 
 		hora+=tiempoSim;
 		if(hora>1440){
@@ -401,6 +474,10 @@ static portTASK_FUNCTION(TimeTask,pvParameters)
 		num_datos=create_frame(frame, COMANDO_TIME, &hora, sizeof(hora), MAX_FRAME_SIZE);
 		if (num_datos>=0){
 			send_frame(frame, num_datos);
+		}else{
+
+			logError(num_datos);
+
 		}
 
 	}
@@ -443,7 +520,8 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 				combustible=0;
 				velocidad=0;
 				color[BLUE]=0x0;
-				pilotoAutomatico=false;
+
+				xEventGroupClearBits( xEventGroup, PilotoAutomaticoBit );
 				ADCSequenceDisable(ADC0_BASE,0);
 
 			}
@@ -452,6 +530,10 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 			num_datos=create_frame(frame, COMANDO_FUEL, &combustible, sizeof(combustible), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
+			}else{
+
+				logError(num_datos);
+
 			}
 			tiempo_ant =xTaskGetTickCount(  );
 		}
@@ -468,6 +550,10 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 			num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
+			}else{
+
+				logError(num_datos);
+
 			}
 		}
 
@@ -526,20 +612,8 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 					}else{
 						//Error de creacion de trama: determinar el error y abortar operacion
 						errors++;
-						// Procesamiento del error (TODO)
-						// Esto de aqui abajo podria ir en una funcion "createFrameError(numdatos)  para evitar
-						// tener que copiar y pegar todo en cada operacion de creacion de paquete
-						switch(numdatos){
-						case PROT_ERROR_NOMEM:
-							// Procesamiento del error NO MEMORY (TODO)
-							break;
-						case PROT_ERROR_STUFFED_FRAME_TOO_LONG:
-							// Procesamiento del error STUFFED_FRAME_TOO_LONG (TODO)
-							break;
-						case PROT_ERROR_COMMAND_TOO_LONG:
-							// Procesamiento del error COMMAND TOO LONG (TODO)
-							break;
-						}
+						logError(numdatos);
+
 					}
 					break;
 				case COMANDO_START:         // Comando de ejemplo: eliminar en la aplicacion final
@@ -563,12 +637,12 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 						{
 							while(1);
 						}
-						if((xTaskCreate(HighTask, (signed portCHAR *)"Altitud", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, NULL) != pdTRUE))
+						if((xTaskCreate(HighTask, (signed portCHAR *)"Altitud", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &altitudTaskHandle) != pdTRUE))
 						{
 							while(1);
 						}
 
-						if((xTaskCreate(turbulenciasTask, (signed portCHAR *)"Turbulencias", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, NULL) != pdTRUE))
+						if((xTaskCreate(turbulenciasTask, (signed portCHAR *)"Turbulencias", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &turbulenciasTaskHandle) != pdTRUE))
 						{
 							while(1);
 						}
@@ -576,7 +650,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 
 				}
 				break;
-				case COMANDO_STOP:         // Comando de ejemplo: eliminar en la aplicacion final
+				case COMANDO_STOP:
 				{
 					if(bits & TrazaBit == TrazaBit){
 						UARTprintf("Comando STOP\n ");
@@ -584,11 +658,14 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 					if(combustible>0){
 					vTaskDelete(sensorTaskHandle);
 					vTaskDelete( consumoTaskHandle );
+					vTaskDelete(altitudTaskHandle);
+					vTaskDelete( turbulenciasTaskHandle );
+
 					}
 
 				}
 				break;
-				case COMANDO_SPEED:         // Comando de ejemplo: eliminar en la aplicacion final
+				case COMANDO_SPEED:
 				{
 
 					if(bits & TrazaBit == TrazaBit){
