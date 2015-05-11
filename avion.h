@@ -17,7 +17,7 @@ double combustible;
 uint32_t hora;
 double  altitud;
 int tiempoSim;
-bool pilotoAutomatico;
+
 
 
 SemaphoreHandle_t EjesSemaphore;
@@ -37,7 +37,7 @@ void setCombustible(double combustibleValor);
 void setHora(uint32_t horaValor);
 void setAltitud(double altitudValor);
 void setTiempoSim(int tiempoSimValor);
-void setPilotoAutomatico(bool pilotoAutomaticoValor);
+
 
 void getEjes(int16_t *ejes);
 float getVelocidad();
@@ -45,7 +45,7 @@ double getCombustible();
 uint32_t getHora();
 double getAltitud();
 int getTiempoSim();
-bool getPilotoAutomatico();
+
 
 
 

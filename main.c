@@ -49,11 +49,13 @@ TaskHandle_t PilautTaskHandle = NULL;
 
 EventGroupHandle_t xEventGroup;
 #define TrazaBit	( 1 << 0 )
+#define PilotoAutomaticoBit (1 << 1)
 
 extern void vUARTTask( void *pvParameters );
 
 uint32_t color[3];
 
+bool pulsacionLarga;
 
 
 
@@ -141,20 +143,21 @@ static portTASK_FUNCTION(PilAuto,pvParameters)
 
 	ADCSequenceDisable(ADC0_BASE,0);
 
+	bool pilotoAutomatico =true;
+	EventBits_t bits;
 
 	num_datos=create_frame(frame, COMANDO_AUTOMATICO, &pilotoAutomatico, sizeof(pilotoAutomatico), MAX_FRAME_SIZE);
 	if (num_datos>=0){
 		send_frame(frame, num_datos);
 	}
 
-	bool pilotoAutomatico;
-
 
 	while(1)
 	{
 		vTaskDelay(configTICK_RATE_HZ);
-		pilotoAutomatico=getPilotoAutomatico();
-		if(!pilotoAutomatico){
+		bits=xEventGroupGetBits(xEventGroup);
+
+		if(bits & PilotoAutomaticoBit != PilotoAutomaticoBit){
 			num_datos=create_frame(frame, COMANDO_AUTOMATICO, &pilotoAutomatico, sizeof(pilotoAutomatico), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
@@ -356,6 +359,8 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 		}else if (ejes[ROLL]<-30){
 			ejes[ROLL]=-30;
 		}
+
+		ejes[YAW]=(potenciometros[YAW]*360)/4095;
 
 		setEjes(ejes[PITCH], ejes[ROLL], ejes[YAW]);
 
@@ -573,7 +578,6 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 				break;
 				case COMANDO_STOP:         // Comando de ejemplo: eliminar en la aplicacion final
 				{
-
 					if(bits & TrazaBit == TrazaBit){
 						UARTprintf("Comando STOP\n ");
 					}
@@ -684,6 +688,7 @@ int main(void)
 
 
 	xEventGroup = xEventGroupCreate();
+	xEventGroupClearBits( xEventGroup, TrazaBit | PilotoAutomaticoBit );
 
 
 	//
@@ -897,12 +902,14 @@ void ButtonHandler(){
 			//boton pulsado
 			// Activa el Timer0A (empezara a funcionar)
 			TimerEnable(TIMER4_BASE, TIMER_A);
-			pilotoAutomatico=true;
+			pulsacionLarga=true;
 
 
 		}else{
 			TimerDisable(TIMER4_BASE,TIMER_A);
-			if(pilotoAutomatico){
+
+			if(pulsacionLarga){
+				xEventGroupSetBits(xEventGroup, PilotoAutomaticoBit);
 				if((xTaskCreate(PilAuto, (signed portCHAR *)"Piloto Auto", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &PilautTaskHandle) != pdTRUE))
 				{
 					while(1);
@@ -914,7 +921,7 @@ void ButtonHandler(){
 
 	if(mask & GPIO_PIN_0){
 		//boton derecho
-		pilotoAutomatico=false;
+		xEventGroupClearBits( xEventGroup, PilotoAutomaticoBit );
 	}
 
 	GPIOIntClear(GPIO_PORTF_BASE,GPIO_PIN_0|GPIO_PIN_4);
@@ -925,5 +932,5 @@ void timerBotonHandler(){
 	TimerIntClear(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
 
 	combustible=100;
-	pilotoAutomatico=false;
+	pulsacionLarga=false;
 }

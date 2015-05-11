@@ -57,11 +57,7 @@ void setTiempoSim(int tiempoSimValor){
 		tiempoSim=tiempoSimValor;
 	xSemaphoreGive(TiempoSimSemaphore);
 }
-void setPilotoAutomatico(bool pilotoAutomaticoValor){
-	xSemaphoreTake(PilotoAutomaticoSemaphore, portMAX_DELAY);
-		pilotoAutomatico=pilotoAutomaticoValor;
-	xSemaphoreGive(PilotoAutomaticoSemaphore);
-}
+
 
 //GET
 void getEjes(int16_t *ejesReturn){
@@ -109,11 +105,4 @@ int getTiempoSim(){
 		tiempoSimReturn=tiempoSim;
 	xSemaphoreGive(TiempoSimSemaphore);
 	return tiempoSimReturn;
-}
-bool getPilotoAutomatico(){
-	bool pilotoReturn;
-	xSemaphoreTake(PilotoAutomaticoSemaphore, portMAX_DELAY);
-		pilotoReturn=pilotoAutomatico;
-	xSemaphoreGive(PilotoAutomaticoSemaphore);
-	return pilotoReturn;
 }
