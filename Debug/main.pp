@@ -48,6 +48,7 @@ main.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/math.h
 main.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/ymath.h
 main.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/float.h
 main.obj: C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/mathcpp.h
+main.obj: ../avion.h
 
 ../main.c: 
 C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/stdbool.h: 
@@ -97,3 +98,4 @@ C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/math.h:
 C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/ymath.h: 
 C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/float.h: 
 C:/ti/ccsv6/tools/compiler/ti-cgt-arm_5.2.4/include/mathcpp.h: 
+../avion.h: 

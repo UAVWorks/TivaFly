@@ -28,12 +28,11 @@
 
 #include <cmath>
 
+#include "avion.h"
 
 #define LED1TASKPRIO 1
 #define LED1TASKSTACKSIZE 128
-#define PITCH 0
-#define ROLL 1
-#define YAW 2
+
 
 //Globales
 
@@ -43,29 +42,19 @@ uint32_t g_ulSystemClock;
 QueueHandle_t potQueue;
 QueueHandle_t velocidadQueue;
 SemaphoreHandle_t SendSemaphore=NULL;
-SemaphoreHandle_t EjesSemaphore=NULL;
-SemaphoreHandle_t  PilotoQuitarSemaphore= NULL;
 
 TaskHandle_t sensorTaskHandle = NULL;
 TaskHandle_t consumoTaskHandle = NULL;
 TaskHandle_t PilautTaskHandle = NULL;
 
-EventGroupHandle_t xTrazaEventGroup;
+EventGroupHandle_t xEventGroup;
 #define TrazaBit	( 1 << 0 )
-
 
 extern void vUARTTask( void *pvParameters );
 
-int16_t ejes[3];
-float  velocidad=60;
-double combustible=100;
-uint32_t hora=0;
-double  altitud=3000;
-int tiempoSim=1;
-
 uint32_t color[3];
 
-bool pilotoAutomatico=true;
+
 
 
 
@@ -158,12 +147,13 @@ static portTASK_FUNCTION(PilAuto,pvParameters)
 		send_frame(frame, num_datos);
 	}
 
+	bool pilotoAutomatico;
 
 
 	while(1)
 	{
 		vTaskDelay(configTICK_RATE_HZ);
-
+		pilotoAutomatico=getPilotoAutomatico();
 		if(!pilotoAutomatico){
 			num_datos=create_frame(frame, COMANDO_AUTOMATICO, &pilotoAutomatico, sizeof(pilotoAutomatico), MAX_FRAME_SIZE);
 			if (num_datos>=0){
@@ -173,11 +163,9 @@ static portTASK_FUNCTION(PilAuto,pvParameters)
 			vTaskDelete(NULL);
 		}
 
-		xSemaphoreTake(EjesSemaphore, portMAX_DELAY);
-		ejes[PITCH]=0;
-		ejes[ROLL]=0;
-		ejes[YAW]=0;
-		velocidad=100;
+
+		setEjes(0,0,0);
+		setVelocidad(100.0f);
 		num_datos=create_frame(frame, COMANDO_EJES, &ejes, sizeof(ejes), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
@@ -186,7 +174,7 @@ static portTASK_FUNCTION(PilAuto,pvParameters)
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
 			}
-		xSemaphoreGive(EjesSemaphore);
+
 
 
 	}
@@ -200,6 +188,7 @@ static portTASK_FUNCTION(turbulenciasTask,pvParameters)
 	int parametro=0;
 	int variacion=0;
 
+	int16_t ejes[3];
 
 	while(1)
 	{
@@ -208,6 +197,7 @@ static portTASK_FUNCTION(turbulenciasTask,pvParameters)
 		parametro=rand()%3;
 		variacion=rand()%10-5;
 
+		getEjes(ejes);
 
 		switch(parametro){
 			case PITCH:
@@ -220,6 +210,7 @@ static portTASK_FUNCTION(turbulenciasTask,pvParameters)
 				ejes[YAW]+= 360*variacion/100;
 				break;
 		}
+		setEjes(ejes[PITCH], ejes[ROLL], ejes[YAW]);
 
 		num_datos=create_frame(frame, COMANDO_EJES, &ejes, sizeof(ejes), MAX_FRAME_SIZE);
 		if (num_datos>=0){
@@ -238,26 +229,36 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 	unsigned char frame[MAX_FRAME_SIZE];
 	int num_datos;
 
+	double altitud;
+	int16_t ejes[3];
+	double combustible;
+	float velocidad;
+	int tiempoSim;
 
 	while(1)
 	{
 		vTaskDelay(configTICK_RATE_HZ);
 
+		altitud=getAltitud();
+		velocidad=getVelocidad();
+		tiempoSim=getTiempoSim();
 		if(altitud>0){
 
-			xSemaphoreTake(EjesSemaphore, portMAX_DELAY);
+			getEjes(ejes);
 			altitud += sin((ejes[PITCH]*3.14f)/180) *(velocidad*(1000/(60/tiempoSim))); //pasar a de minutos a horas y km a m
-			xSemaphoreGive(EjesSemaphore);
 
 			if(altitud>99999){
 				altitud=99999;
 			}
+
+			setAltitud(altitud);
 
 			num_datos=create_frame(frame, COMANDO_HIGH, &altitud, sizeof(altitud), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
 			}
 
+			combustible=getCombustible();
 			if(combustible==0){
 				color[BLUE]=0xFFFF;
 				if(altitud<=800){
@@ -268,8 +269,10 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 				if(altitud<2000){
 					RGBBlinkRateSet((float)(1000/(altitud+1)));
 				}
+				tiempoSim=getTiempoSim();
 
 				velocidad+=9.8*(60*tiempoSim)/1000;
+				setVelocidad(velocidad);
 				num_datos=create_frame(frame, COMANDO_SPEED, &velocidad, sizeof(velocidad), MAX_FRAME_SIZE);
 				if (num_datos>=0){
 					send_frame(frame, num_datos);
@@ -280,6 +283,8 @@ static portTASK_FUNCTION(HighTask,pvParameters)
 			//BLOQUEAR TIVA
 			velocidad=0;
 			altitud=0;
+			setVelocidad(velocidad);
+			setAltitud(altitud);
 			if(combustible!=0) ADCSequenceDisable(ADC0_BASE,0);
 			num_datos=create_frame(frame, COMANDO_COLISION,NULL, 0, MAX_FRAME_SIZE);
 			if (num_datos>=0){
@@ -299,17 +304,16 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 		{
 
 	uint32_t potenciometros[3];
-	uint32_t lastPotenciometros[3];
 
 	int16_t lastEjes[3]={0,0,0};
 
 	unsigned char frame[MAX_FRAME_SIZE];
 	int num_datos;
-	int incrementoPITCH, incrementoROLL;
 
-	ejes[PITCH]=0;
-	ejes[ROLL]=0;
-	ejes[YAW]=0;
+	int16_t ejes[3];
+
+	getEjes(ejes);
+
 	num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
 	if (num_datos>=0){
 	send_frame(frame, num_datos);
@@ -319,45 +323,26 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 	{
 		xQueueReceive(potQueue,potenciometros,portMAX_DELAY);
 
-		/*eje[PITCH]=(potenciometros[PITCH]*90)/4096-45;
-		eje[ROLL]=(potenciometros[ROLL]*60)/4096-30;
-		eje[YAW]=(potenciometros[YAW]*360)/4096;
+		getEjes(ejes);
 
-		incrementoPITCH=eje[PITCH]-eje[PITCH];
-		incrementoROLL=eje[ROLL]-eje[ROLL];*/
-
-		if(potenciometros[PITCH]>=0 && potenciometros[PITCH]<682){
-			ejes[PITCH]-=1;
-		}else if(potenciometros[PITCH]>=585 && potenciometros[PITCH]<1170){
+		if(potenciometros[PITCH]<819){
 			ejes[PITCH]-=2;
-		}else if(potenciometros[PITCH]>=1170 && potenciometros[PITCH]<1754){
+		}else if(potenciometros[PITCH]>=819 && potenciometros[PITCH]<1638){
 			ejes[PITCH]-=1;
-		}else if(potenciometros[PITCH]>=1754 && potenciometros[PITCH]<2340){
-			//SECCION CENTRAL
-
-		}else if(potenciometros[PITCH]>=2340 && potenciometros[PITCH]<2925){
+		}else if(potenciometros[PITCH]>=2458 && potenciometros[PITCH]<3276){
 			ejes[PITCH]+=1;
-		}else if(potenciometros[PITCH]>=2925 && potenciometros[PITCH]<3510){
+		}else if(potenciometros[PITCH]>=3276 && potenciometros[PITCH]<4095){
 			ejes[PITCH]+=2;
-		}else if(potenciometros[PITCH]>=3510 && potenciometros[PITCH]<4096){
-			ejes[PITCH]+=3;
 		}
 
-		if(potenciometros[ROLL]>=0 && potenciometros[ROLL]<682){
-			ejes[ROLL]-=5;
-		}else if(potenciometros[ROLL]>=585 && potenciometros[ROLL]<1170){
-			ejes[ROLL]-=3;
-		}else if(potenciometros[ROLL]>=1170 && potenciometros[ROLL]<1754){
+		if( potenciometros[ROLL]<819){
+			ejes[ROLL]-=2;
+		}else if(potenciometros[ROLL]>=819 && potenciometros[ROLL]<1638){
 			ejes[ROLL]-=1;
-		}else if(potenciometros[ROLL]>=1754 && potenciometros[ROLL]<2340){
-			//SECCION CENTRAL
-
-		}else if(potenciometros[ROLL]>=2340 && potenciometros[ROLL]<2925){
+		}else if(potenciometros[ROLL]>=2458 && potenciometros[ROLL]<3276){
 			ejes[ROLL]+=1;
-		}else if(potenciometros[ROLL]>=2925 && potenciometros[ROLL]<3510){
-			ejes[ROLL]+=3;
-		}else if(potenciometros[ROLL]>=3510 && potenciometros[ROLL]<4096){
-			ejes[ROLL]+=5;
+		}else if(potenciometros[ROLL]>=3276 && potenciometros[ROLL]<4095){
+			ejes[ROLL]+=2;
 		}
 
 		if (ejes[PITCH]>45){
@@ -372,6 +357,7 @@ static portTASK_FUNCTION(SensorTask,pvParameters)
 			ejes[ROLL]=-30;
 		}
 
+		setEjes(ejes[PITCH], ejes[ROLL], ejes[YAW]);
 
 		if(ejes[PITCH]!=lastEjes[PITCH] || ejes[ROLL]!=lastEjes[ROLL] || ejes[YAW]!=lastEjes[YAW]){
 			num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
@@ -390,21 +376,27 @@ static portTASK_FUNCTION(TimeTask,pvParameters)
 {
 	unsigned char frame[MAX_FRAME_SIZE];
 	int num_datos;
+	int tiempoSim;
+	uint32_t hora;
 
 	while(1)
 	{
 		vTaskDelay(configTICK_RATE_HZ);
+
+		tiempoSim=getTiempoSim();
+		hora = getHora();
+
 		hora+=tiempoSim;
 		if(hora>1440){
 			hora=0;
 		}
 
+		setHora(hora);
+
 		num_datos=create_frame(frame, COMANDO_TIME, &hora, sizeof(hora), MAX_FRAME_SIZE);
 		if (num_datos>=0){
 			send_frame(frame, num_datos);
 		}
-
-
 
 	}
 }
@@ -421,6 +413,10 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 	unsigned char frame[MAX_FRAME_SIZE];
 	int num_datos;
 
+	double combustible;
+	int16_t ejes[3];
+	double  altitud;
+
 	while(1)
 	{
 
@@ -430,6 +426,7 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 		}
 
 		if((xTaskGetTickCount(  )-tiempo_ant)>=configTICK_RATE_HZ*(60/tiempoSim) && combustible!=0){
+			combustible=getCombustible();
 
 			combustible -= 0.5*exp(0.02*(velocidad*100/240)) ;
 			if(combustible<=20){
@@ -440,11 +437,13 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 			if(combustible<=0){
 				combustible=0;
 				velocidad=0;
+				color[BLUE]=0x0;
 				pilotoAutomatico=false;
 				ADCSequenceDisable(ADC0_BASE,0);
 
 			}
 
+			setCombustible(combustible);
 			num_datos=create_frame(frame, COMANDO_FUEL, &combustible, sizeof(combustible), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
@@ -452,16 +451,21 @@ static portTASK_FUNCTION(ConsumoTask,pvParameters)
 			tiempo_ant =xTaskGetTickCount(  );
 		}
 
-		xSemaphoreTake(EjesSemaphore, portMAX_DELAY);
+
+		getEjes(ejes);
+		altitud=getAltitud();
 		if(ejes[PITCH]>-45 && combustible==0 && altitud>0){
 
 			ejes[PITCH]--;
+
+			setEjes(ejes[PITCH],ejes[ROLL],ejes[YAW]);
+
 			num_datos=create_frame(frame, COMANDO_EJES, ejes, sizeof(ejes), MAX_FRAME_SIZE);
 			if (num_datos>=0){
 				send_frame(frame, num_datos);
 			}
 		}
-		xSemaphoreGive(EjesSemaphore);
+
 
 
 	}
@@ -500,7 +504,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 			{
 				//El paquete esta bien, luego procedo a tratarlo.
 				command=decode_command_type(frame,0);
-				bits=xEventGroupGetBits(xTrazaEventGroup);
+				bits=xEventGroupGetBits(xEventGroup);
 				switch(command)
 				{
 				case COMANDO_PING :
@@ -543,6 +547,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 
 					if(sensorTaskHandle == NULL){
 
+						inicializarVariables();
 
 						if((xTaskCreate(ConsumoTask, (signed portCHAR *)"Consumo", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &consumoTaskHandle)!= pdTRUE))
 						{
@@ -585,7 +590,7 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 					if(bits & TrazaBit == TrazaBit){
 						UARTprintf("Comando SPEED\n ");
 					}
-					uint32_t  velocidad;
+					float  velocidad;
 
 
 					extract_packet_command_param(frame,sizeof(velocidad),&velocidad);
@@ -601,7 +606,10 @@ static portTASK_FUNCTION( CommandProcessingTask, pvParameters ){
 						UARTprintf("Comando TIME\n ");
 					}
 
+					uint32_t hora;
 					extract_packet_command_param(frame,sizeof(hora),&hora);
+
+					setHora(hora);
 					if(xTaskCreate(TimeTask, (portCHAR *)"Time",512, NULL, tskIDLE_PRIORITY + 1, NULL) != pdTRUE)
 					{
 						while(1);
@@ -646,6 +654,7 @@ void confGPIO();
 void confTasks();
 
 void confQueue();
+void confSemaphores();
 void confADC();
 void confTimer();
 void ButtonHandler();
@@ -671,12 +680,10 @@ int main(void)
 	confGPIO();
 	confADC();
 	confQueue();
+	confSemaphores();
 
 
-	SendSemaphore = xSemaphoreCreateMutex();
-	EjesSemaphore =	 xSemaphoreCreateMutex();
-
-	xTrazaEventGroup = xEventGroupCreate();
+	xEventGroup = xEventGroupCreate();
 
 
 	//
@@ -818,32 +825,33 @@ void confADC(){
 }
 
 void confTimer(){
-	// Configuracion TIMER0
-	// Habilita periferico Timer0
+
 
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER2);
 	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER2);
 	TimerControlStall(TIMER2_BASE,TIMER_A,true);
-	// Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
 	TimerConfigure(TIMER2_BASE, TIMER_CFG_PERIODIC);
 	uint32_t ui32Period = SysCtlClockGet() *0.1;
-	// Carga la cuenta en el Timer0A
 	TimerLoadSet(TIMER2_BASE, TIMER_A, ui32Period -1);
-	//Configuramos el Timer como el TRIGGER del ADC
 	TimerControlTrigger(TIMER2_BASE,TIMER_A,true);
-	// Activa el Timer0A (empezara a funcionar)
 	TimerEnable(TIMER2_BASE, TIMER_A);
 
 
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
-	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER4);
-	TimerControlStall(TIMER4_BASE,TIMER_A,true);
-	// Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
-	TimerConfigure(TIMER4_BASE, TIMER_CFG_ONE_SHOT);
-	 ui32Period = SysCtlClockGet() *2;
-	// Carga la cuenta en el Timer0A
-	TimerLoadSet(TIMER2_BASE, TIMER_A, ui32Period -1);
-	TimerIntRegister(TIMER4_BASE,TIMER_A,timerBotonHandler);
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER4);
+  SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_TIMER4);
+  // Configura el Timer0 para cuenta periodica de 32 bits (no lo separa en TIMER0A y TIMER0B)
+  TimerConfigure(TIMER4_BASE, TIMER_CFG_ONE_SHOT);
+  // Periodo de cuenta de 0.05s. SysCtlClockGet() te proporciona la frecuencia del reloj del sistema, por lo que una cuenta
+  // del Timer a SysCtlClockGet() tardara 1 segundo, a 0.5*SysCtlClockGet(), 0.5seg, etc...
+  ui32Period = (SysCtlClockGet() *2) ;
+  // Carga la cuenta en el Timer0A
+  TimerLoadSet(TIMER4_BASE, TIMER_A, ui32Period -1);
+  // Habilita interrupcion del modulo TIMER
+  IntEnable(INT_TIMER4A);
+  TimerIntRegister(TIMER4_BASE,TIMER_A,timerBotonHandler);
+  IntPrioritySet(INT_TIMER5A,5<<5);
+  // Y habilita, dentro del modulo TIMER0, la interrupcion de particular de "fin de cuenta"
+  TimerIntEnable(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
 
 }
 
@@ -852,6 +860,12 @@ void confQueue(){
 		potQueue = xQueueCreate( 1, sizeof(potenciometros) );
 
 		velocidadQueue=xQueueCreate(1,sizeof(uint32_t));
+}
+
+void confSemaphores(){
+	SendSemaphore = xSemaphoreCreateMutex();
+
+	crearSemaphoresAvion();
 }
 
 void ADCIntHandler(){
@@ -876,29 +890,25 @@ void ButtonHandler(){
 
 	uint8_t value=0;
 
-
 	if(mask & GPIO_PIN_4){
 		//Boton izquierdo
 		value= GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_4);
-		if(value=0){
-			//boton levantado
+		if(value==0){
+			//boton pulsado
+			// Activa el Timer0A (empezara a funcionar)
+			TimerEnable(TIMER4_BASE, TIMER_A);
+			pilotoAutomatico=true;
+
+
+		}else{
+			TimerDisable(TIMER4_BASE,TIMER_A);
 			if(pilotoAutomatico){
 				if((xTaskCreate(PilAuto, (signed portCHAR *)"Piloto Auto", LED1TASKSTACKSIZE,NULL,tskIDLE_PRIORITY + 1, &PilautTaskHandle) != pdTRUE))
 				{
 					while(1);
 				}
 			}
-			TimerDisable(TIMER4_BASE, TIMER_A);
-		}else{
-			//boton pulsado
-			// Activa el Timer0A (empezara a funcionar)
-			TimerEnable(TIMER4_BASE, TIMER_A);
-			pilotoAutomatico=true;
 		}
-
-
-
-
 
 	}
 
@@ -911,7 +921,9 @@ void ButtonHandler(){
 }
 
 void timerBotonHandler(){
+
+	TimerIntClear(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
+
 	combustible=100;
 	pilotoAutomatico=false;
-	TimerIntClear(TIMER4_BASE, TIMER_A);
 }

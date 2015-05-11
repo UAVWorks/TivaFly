@@ -172,7 +172,7 @@ int Cmd_help(int argc, char *argv[])
     return(0);
 }
 
-extern EventGroupHandle_t xTrazaEventGroup;
+extern EventGroupHandle_t xEventGroup;
 #define TrazaBit	( 1 << 0 )
 
 int Cmd_traza(int argc, char *argv[])
@@ -185,13 +185,13 @@ int Cmd_traza(int argc, char *argv[])
 	if (0==strncmp( argv[1], "on",2))
 	{
 		UARTprintf("Activando Traza\n");
-		xEventGroupSetBits( xTrazaEventGroup, TrazaBit );
+		xEventGroupSetBits( xEventGroup, TrazaBit );
 
 	}
 	else if (0==strncmp( argv[1], "off",3))
 	{
 		UARTprintf("Desactivando Traza\n");
-		xEventGroupClearBits( xTrazaEventGroup, TrazaBit );
+		xEventGroupClearBits( xEventGroup, TrazaBit );
 	}
 	else
 	{
@@ -252,7 +252,7 @@ int Cmd_timesim(int argc, char *argv[])
 
 		tiempo=atoi(argv[1]);
 		if(tiempo<=30 && tiempo>=1){
-			tiempoSim=tiempo;
+			setTiempoSim(tiempo);
 		}
 
 
